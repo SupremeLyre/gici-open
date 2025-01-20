@@ -75,7 +75,7 @@ ROS is a library for robot applications. We provide a ROS wrapper to enable GICI
 #### 2.1 Normal Build
 
 ```
-cd <gici-root-directory>
+cd /home/supremelyre/data/projects/gici-open
 mkdir build
 cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
@@ -91,7 +91,7 @@ Now you can run GICI via
 #### 2.2 Build with ROS
 
 ```
-cd <gici-root-directory>/ros_wrapper
+cd /home/supremelyre/data/projects/gici-open/ros_wrapper
 catkin_make -DCMAKE_BUILD_TYPE=Release
 source ./devel/setup.bash
 ```

@@ -20,13 +20,13 @@ stream:
         tag: str_dcb_file
         output_tags: [fmt_dcb_file]
         type: file
-        path: <gici-root-directory>/option/CAS0MGXRAP_20221580000_01D_01D_DCB.BSX
+        path: /home/supremelyre/data/projects/gici-open/option/CAS0MGXRAP_20231410000_01D_01D_DCB.BSX
         enable_time_tag: false
     - streamer:
         tag: str_solution_file
         input_tags: [fmt_solution_file]
         type: file
-        path: <output-directory>/spp_solution.txt
+        path: /home/supremelyre/data/projects/datasets/5.2/spp_solution.txt
         enable_time_tag: false
     - streamer:
         tag: str_solution
@@ -97,4 +97,4 @@ logging:
   enable: true
   min_log_level: 0
   log_to_stderr: true
-  file_directory: <log-directory>
+  file_directory: /home/supremelyre/data/projects/datasets/5.2/log

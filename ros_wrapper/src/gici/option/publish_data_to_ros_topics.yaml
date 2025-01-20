@@ -71,4 +71,4 @@ logging:
   enable: true
   min_log_level: 1
   log_to_stderr: true
-  file_directory: <log-directory>
+  file_directory: /home/supremelyre/data/projects/datasets/5.2/log
