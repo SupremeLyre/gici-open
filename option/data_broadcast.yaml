@@ -28,4 +28,4 @@ logging:
   enable: true
   min_log_level: 1
   log_to_stderr: true
-  file_directory: /home/supremelyre/data/projects/datasets/5.2/log
+  file_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log

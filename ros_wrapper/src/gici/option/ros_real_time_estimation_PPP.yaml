@@ -38,7 +38,7 @@ stream:
         tag: str_solution_file
         input_tags: [fmt_solution_file]
         type: file
-        path: /home/supremelyre/data/projects/datasets/5.2/ppp_solution.txt
+        path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/ppp_solution.txt
         enable_time_tag: false
     - streamer:
         tag: str_solution
@@ -117,10 +117,10 @@ estimate:
       solver_type: dense_schur
       trust_region_strategy_type: dogleg
       log_intermediate_data: false
-      log_intermediate_data_directory: /home/supremelyre/data/projects/datasets/5.2/log
+      log_intermediate_data_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log
 
 logging:
   enable: true
   min_log_level: 0
   log_to_stderr: true
-  file_directory: /home/supremelyre/data/projects/datasets/5.2/log
+  file_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log

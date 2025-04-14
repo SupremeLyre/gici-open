@@ -5,17 +5,17 @@ stream:
       tag: str_gnss_rov_file
       output_tags: [fmt_gnss_rov]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_rover.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_rover.bin
   - streamer:
       tag: str_gnss_eph
       output_tags: [fmt_gnss_eph]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_ephemeris.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_ephemeris.bin
   - streamer:
       tag: str_gnss_ssr
       output_tags: [fmt_gnss_ssr]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_ssr.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_ssr.bin
   - streamer:
       tag: str_gnss_atx
       output_tags: [fmt_gnss_atx]
@@ -32,13 +32,13 @@ stream:
       tag: str_imu
       output_tags: [fmt_imu]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/imu.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/imu.bin
       loop_duration: 0.001
   - streamer:
       tag: str_solution_file
       input_tags: [fmt_solution_file]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/ppp_solution.txt
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/ppp_solution.txt
       enable_time_tag: false
 
   formators:
@@ -116,7 +116,7 @@ estimate:
 #       solver_type: dense_schur
 #       trust_region_strategy_type: dogleg
 #       log_intermediate_data: false
-#       log_intermediate_data_directory: /home/supremelyre/data/projects/datasets/5.2/log
+#       log_intermediate_data_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log
 
 - estimator:
     tag: est_gnss_imu_tc
@@ -168,7 +168,7 @@ estimate:
       solver_type: dense_schur
       trust_region_strategy_type: dogleg
       log_intermediate_data: false
-      log_intermediate_data_directory: /home/supremelyre/data/projects/datasets/5.2/log
+      log_intermediate_data_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log
     gnss_imu_initializer_options:
       max_iteration: 30
       num_threads: 4
@@ -183,4 +183,4 @@ logging:
   enable: true
   min_log_level: 0
   log_to_stderr: true
-  file_directory: /home/supremelyre/data/projects/datasets/5.2/log
+  file_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log

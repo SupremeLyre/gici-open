@@ -6,23 +6,23 @@ stream:
       tag: str_gnss_rov_file
       output_tags: [fmt_gnss_rov]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_rover.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_rover.bin
   - streamer:
       tag: str_gnss_eph
       output_tags: [fmt_gnss_eph]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_ephemeris.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_ephemeris.bin
   - streamer:
       tag: str_imu
       output_tags: [fmt_imu]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/imu.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/imu.bin
       loop_duration: 0.001
   - streamer:
       tag: str_camera
       output_tags: [fmt_camera]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/camera.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/camera.bin
       buffer_length: 361472  # 752 * 480 + 512 
   - streamer:
       tag: str_dcb_file
@@ -34,7 +34,7 @@ stream:
       tag: str_solution_file
       input_tags: [fmt_solution_file]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/spp_rrr_solution.txt
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/spp_rrr_solution.txt
       enable_time_tag: false
   # - streamer:
   #     tag: str_ros_imu
@@ -235,4 +235,4 @@ logging:
   enable: true
   min_log_level: 0
   log_to_stderr: true
-  file_directory: /home/supremelyre/data/projects/datasets/5.2/log
+  file_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log

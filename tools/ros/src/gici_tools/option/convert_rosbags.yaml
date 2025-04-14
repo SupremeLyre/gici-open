@@ -5,27 +5,27 @@ stream:
       tag: str_gnss_rov
       output_tags: [fmt_gnss_rov]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_rover.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_rover.bin
   - streamer:
       tag: str_gnss_ref
       output_tags: [fmt_gnss_ref]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_reference.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_reference.bin
   - streamer:
       tag: str_gnss_eph
       output_tags: [fmt_gnss_eph]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_ephemeris.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_ephemeris.bin
   - streamer:
       tag: str_imu
       output_tags: [fmt_imu]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/imu.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/imu.bin
   - streamer:
       tag: str_camera
       output_tags: [fmt_camera]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/camera.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/camera.bin
       buffer_length: 361472  # 752 * 480 + 512 
 
   formators:
@@ -60,7 +60,7 @@ rosbags:
     tag: rosbag_gnss_rov
     type: rosbag
     input_tags: [fmt_gnss_rov]
-    path: /home/supremelyre/data/projects/datasets/5.2/gnss_rover.bag
+    path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_rover.bag
     topic_name: /gici/gnss_rover
     format: gnss_raw
     enable_observation: true
@@ -68,7 +68,7 @@ rosbags:
     tag: rosbag_gnss_ref
     type: rosbag
     input_tags: [fmt_gnss_ref]
-    path: /home/supremelyre/data/projects/datasets/5.2/gnss_reference.bag
+    path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_reference.bag
     topic_name: /gici/gnss_reference
     format: gnss_raw
     enable_observation: true
@@ -77,7 +77,7 @@ rosbags:
     tag: rosbag_gnss_eph
     type: rosbag
     input_tags: [fmt_gnss_eph]
-    path: /home/supremelyre/data/projects/datasets/5.2/gnss_ephemeris.bag
+    path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_ephemeris.bag
     topic_name: /gici/gnss_ephemeris
     format: gnss_raw
     enable_ephemeris: true
@@ -86,13 +86,13 @@ rosbags:
     tag: rosbag_imu
     type: rosbag
     input_tags: [fmt_imu]
-    path: /home/supremelyre/data/projects/datasets/5.2/imu.bag
+    path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/imu.bag
     topic_name: /gici/imu_raw
     format: imu
 - rosbag: 
     tag: rosbag_camera
     type: rosbag
     input_tags: [fmt_camera]
-    path: /home/supremelyre/data/projects/datasets/5.2/image.bag
+    path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/image.bag
     topic_name: /gici/image_raw
     format: image

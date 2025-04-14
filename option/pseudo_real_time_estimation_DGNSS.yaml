@@ -5,17 +5,17 @@ stream:
       tag: str_gnss_rov_file
       output_tags: [fmt_gnss_rov]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_rover.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_rover.bin
   - streamer:
       tag: str_gnss_ref
       output_tags: [fmt_gnss_ref]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_reference.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_reference.bin
   - streamer:
       tag: str_gnss_eph
       output_tags: [fmt_gnss_eph]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/gnss_ephemeris.bin
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/gnss_ephemeris.bin
   - streamer:
       tag: str_dcb_file
       output_tags: [fmt_dcb_file]
@@ -26,7 +26,7 @@ stream:
       tag: str_solution_file
       input_tags: [fmt_solution_file]
       type: file
-      path: /home/supremelyre/data/projects/datasets/5.2/dgnss_solution.txt
+      path: /home/supremelyre/data/datasets/gici_open_dataset/5.2/dgnss_solution.txt
       enable_time_tag: false
 
   formators:
@@ -93,4 +93,4 @@ logging:
   enable: true
   min_log_level: 0
   log_to_stderr: true
-  file_directory: /home/supremelyre/data/projects/datasets/5.2/log
+  file_directory: /home/supremelyre/data/datasets/gici_open_dataset/5.2/log
