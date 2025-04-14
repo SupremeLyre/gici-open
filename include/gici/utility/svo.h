@@ -1,26 +1,27 @@
 /**
-* @Function: SVO library
-*
-* @Author  : Cheng Chi
-* @Email   : chichengcn@sjtu.edu.cn
-*
-* Copyright (C) 2023 by Cheng Chi, All rights reserved.
-**/
+ * @Function: SVO library
+ *
+ * @Author  : Cheng Chi
+ * @Email   : chichengcn@sjtu.edu.cn
+ *
+ * Copyright (C) 2023 by Cheng Chi, All rights reserved.
+ **/
 #pragma once
 
-#include <svo/svo.h>
-#include <svo/tracker/feature_tracking_utils.h>
-#include <svo/img_align/sparse_img_align.h>
-#include <svo/direct/feature_detection_utils.h>
 #include <svo/direct/feature_alignment.h>
-#include <svo/direct/patch_warp.h>
+#include <svo/direct/feature_detection_utils.h>
 #include <svo/direct/patch_score.h>
 #include <svo/direct/patch_utils.h>
+#include <svo/direct/patch_warp.h>
+#include <svo/img_align/sparse_img_align.h>
+#include <svo/svo.h>
+#include <svo/tracker/feature_tracking_utils.h>
 
-// We do not directly apply (using namespace gici) here to 
+// We do not directly apply (using namespace gici) here to
 // avoid some naming conflit when reforming some features
 // of svo.
-namespace gici {
+namespace gici
+{
 
 // Common
 namespace frame_utils = svo::frame_utils;
@@ -78,28 +79,28 @@ using CameraConstPtr = svo::CameraConstPtr;
 using Map = svo::Map;
 using MapPtr = svo::MapPtr;
 
-inline void changeFeatureTypeToSeed(FeatureType& t) 
+inline void changeFeatureTypeToSeed(FeatureType &t)
 {
-  if(t == FeatureType::kCorner)
-    t = FeatureType::kCornerSeed;
-  else if(t == FeatureType::kEdgelet)
-    t = FeatureType::kEdgeletSeed;
-  else if(t == FeatureType::kMapPoint)
-    t = FeatureType::kMapPointSeed;
-  else
-    LOG(ERROR) << "Unknown feature types: " << static_cast<int>(t);
+    if (t == FeatureType::kCorner)
+        t = FeatureType::kCornerSeed;
+    else if (t == FeatureType::kEdgelet)
+        t = FeatureType::kEdgeletSeed;
+    else if (t == FeatureType::kMapPoint)
+        t = FeatureType::kMapPointSeed;
+    else
+        LOG(ERROR) << "Unknown feature types: " << static_cast<int>(t);
 }
 
-inline void changeFeatureTypeFromSeed(FeatureType& t) 
+inline void changeFeatureTypeFromSeed(FeatureType &t)
 {
-  if(t == FeatureType::kCornerSeed)
-    t = FeatureType::kCorner;
-  else if(t == FeatureType::kEdgeletSeed)
-    t = FeatureType::kEdgelet;
-  else if(t == FeatureType::kMapPointSeed)
-    t = FeatureType::kMapPoint;
-  else
-    LOG(ERROR) << "Unknown feature types: " << static_cast<int>(t);
+    if (t == FeatureType::kCornerSeed)
+        t = FeatureType::kCorner;
+    else if (t == FeatureType::kEdgeletSeed)
+        t = FeatureType::kEdgelet;
+    else if (t == FeatureType::kMapPointSeed)
+        t = FeatureType::kMapPoint;
+    else
+        LOG(ERROR) << "Unknown feature types: " << static_cast<int>(t);
 }
 
-}
+} // namespace gici
