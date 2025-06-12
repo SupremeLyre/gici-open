@@ -90,6 +90,7 @@ template <> void convert<std::string, GnssRawFormats>(const std::string &in, Gns
     MAP_IN_OUT("septentrio", GnssRawFormats::Septentrio);
     MAP_IN_OUT("novatel", GnssRawFormats::Novatel);
     MAP_IN_OUT("tersus", GnssRawFormats::Tersus);
+    MAP_IN_OUT("unicore", GnssRawFormats::Unicore);
     LOG_INVALId;
 }
 

@@ -460,6 +460,7 @@ extern "C" {
 #define STRFMT_RNXCLK 15                /* stream format: RINEX CLK */
 #define STRFMT_SBAS  16                 /* stream format: SBAS messages */
 #define STRFMT_NMEA  17                 /* stream format: NMEA 0183 */
+#define STRFMT_UNICORE 18               /* stream format: Unicore UM980*/
 #define MAXRCVFMT    12                 /* max number of receiver format */
 
 #define STR_MODE_R  0x1                 /* stream mode: read */

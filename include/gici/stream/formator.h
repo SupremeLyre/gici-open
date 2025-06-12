@@ -18,6 +18,7 @@
 #include "gici/stream/format_imu.h"
 #include "gici/utility/option.h"
 #include "gici/utility/rtklib_safe.h"
+#include "rtklib.h"
 
 namespace gici
 {
@@ -133,7 +134,8 @@ enum class GnssRawFormats
     Ublox = STRFMT_UBX,
     Septentrio = STRFMT_SEPT,
     Novatel = STRFMT_OEM4,
-    Tersus = STRFMT_OEM4
+    Tersus = STRFMT_OEM4,
+    Unicore = STRFMT_UNICORE
 };
 
 // Max number of output data buffers for decoders
