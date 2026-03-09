@@ -12,7 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
-
+#include <string>
 #include "gici/utility/rtklib_safe.h"
 
 namespace gici

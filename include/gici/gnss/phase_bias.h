@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 
 #include "gici/utility/rtklib_safe.h"
