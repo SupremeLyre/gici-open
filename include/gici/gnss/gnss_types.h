@@ -32,6 +32,8 @@ enum class GnssRole
     Reference,
     Ephemeris,
     SsrEphemeris,
+    PreciseOrbit,
+    PreciseClock,
     IonAndUtc,
     CodeBias,
     PhaseBias,

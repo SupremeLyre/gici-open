@@ -28,6 +28,7 @@ enum class StreamerType
     NtripClient = STR_NTRIPCLI,
     NtripServer = STR_NTRIPSVR,
     V4L2 = 10,
+    PostFile,
     Ros
 };
 

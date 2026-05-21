@@ -283,7 +283,7 @@ bool RtkEstimator::estimate()
                   << std::setprecision(3) << "Initial cost: " << graph_->summary.initial_cost << ", "
                   << "Final cost: " << graph_->summary.final_cost << ", Sat number: " << std::setw(2) << num_satellites_
                   << ", GDOP: " << std::setprecision(1) << std::fixed << gdop_ << ", Dif distance: " << distance
-                  << " km"
+                  << " km" << ", Age: " << std::setprecision(1) << curGnssRov().timestamp - curGnssRef().timestamp
                   << ", Fix status: " << std::setw(1) << static_cast<int>(curState().status);
     }
 

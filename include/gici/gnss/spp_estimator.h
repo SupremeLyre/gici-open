@@ -40,6 +40,13 @@ class SppEstimator : public GnssEstimatorBase
     SppEstimator(const GnssEstimatorBaseOptions &gnss_base_options);
 
     ~SppEstimator();
+    // Set as PPP mode
+    // to enable the estimated parameters are self consistent with PPP
+    void setPPPMode()
+    {
+        is_ppp_ = true;
+        spp_options_.use_dual_frequency = true;
+    }
 
     // Add measurement
     bool addMeasurement(const EstimatorDataCluster &measurement) override;

@@ -127,11 +127,12 @@ bool SppEstimator::addGnssMeasurementAndState(const GnssMeasurement &measurement
     curState().id_in_graph = position_id;
     // clock block
     int num_valid_system = 0;
-    addClockParameterBlocks(curGnss(), curGnss().id, num_valid_system, std::map<char, double>(), true);
+    addClockParameterBlocks(curGnss(), curGnss().id, num_valid_system, std::map<char, double>(),
+                            !spp_options_.use_dual_frequency);
 
     // Add pseudorange residual blocks
     int num_valid_satellite = 0;
-    addPseudorangeResidualBlocks(curGnss(), curState(), num_valid_satellite, true);
+    addPseudorangeResidualBlocks(curGnss(), curState(), num_valid_satellite, !spp_options_.use_dual_frequency);
 
     // Check if insufficient satellites
     if (!checkSufficientSatellite(num_valid_satellite, num_valid_system))

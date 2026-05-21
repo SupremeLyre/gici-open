@@ -29,6 +29,7 @@
 #include "gici/gnss/spp_estimator.h"
 #include "gici/imu/imu_estimator_base.h"
 #include "gici/imu/imu_types.h"
+#include "gici/stream/file_reader.h"
 #include "gici/stream/formator.h"
 #include "gici/stream/streamer.h"
 #include "gici/stream/streaming.h"
@@ -65,6 +66,7 @@ template <> void convert<std::string, StreamerType>(const std::string &in, Strea
     MAP_IN_OUT("ntrip-client", StreamerType::NtripClient);
     MAP_IN_OUT("ntrip-server", StreamerType::NtripServer);
     MAP_IN_OUT("v4l2", StreamerType::V4L2);
+    MAP_IN_OUT("post-file", StreamerType::PostFile);
     MAP_IN_OUT("ros", StreamerType::Ros);
     LOG_INVALId;
 }
@@ -74,13 +76,17 @@ template <> void convert<std::string, FormatorType>(const std::string &in, Forma
     MAP_IN_OUT("gnss-rtcm-2", FormatorType::RTCM2);
     MAP_IN_OUT("gnss-rtcm-3", FormatorType::RTCM3);
     MAP_IN_OUT("gnss-raw", FormatorType::GnssRaw);
+    MAP_IN_OUT("gnss-rinex", FormatorType::RINEX);
     MAP_IN_OUT("image-v4l2", FormatorType::ImageV4L2);
     MAP_IN_OUT("image-pack", FormatorType::ImagePack);
     MAP_IN_OUT("imu-pack", FormatorType::IMUPack);
+    MAP_IN_OUT("imu-text", FormatorType::IMUText);
     MAP_IN_OUT("option", FormatorType::OptionPack);
     MAP_IN_OUT("nmea", FormatorType::NMEA);
     MAP_IN_OUT("dcb-file", FormatorType::DcbFile);
     MAP_IN_OUT("atx-file", FormatorType::AtxFile);
+    MAP_IN_OUT("sp3-file", FormatorType::Sp3File);
+    MAP_IN_OUT("clk-file", FormatorType::ClkFile);
     LOG_INVALId;
 }
 
@@ -113,6 +119,8 @@ template <> void convert<std::string, GnssRole>(const std::string &in, GnssRole 
     MAP_IN_OUT("phase_bias", GnssRole::PhaseBias);
     MAP_IN_OUT("heading", GnssRole::Heading);
     MAP_IN_OUT("phase_center", GnssRole::PhaseCenter);
+    MAP_IN_OUT("precise_orbit", GnssRole::PreciseOrbit);
+    MAP_IN_OUT("precise_clock", GnssRole::PreciseClock);
     LOG_INVALId;
 }
 
@@ -225,6 +233,8 @@ SensorType sensorType(std::string in)
     MAP_IN_RET("phase_bias", SensorType::GNSS);
     MAP_IN_RET("ssr_ephemeris", SensorType::GNSS);
     MAP_IN_RET("phase_center", SensorType::GNSS);
+    MAP_IN_RET("precise_orbit", SensorType::GNSS);
+    MAP_IN_RET("precise_clock", SensorType::GNSS);
     MAP_IN_RET("major", SensorType::IMU);
     MAP_IN_RET("major", SensorType::IMU);
     MAP_IN_RET("mono", SensorType::Camera);

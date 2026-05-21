@@ -647,7 +647,7 @@ class GnssEstimatorBase : public virtual EstimatorBase
                 return true;
         }
         if (!gnss_common::checkObservationValid(measurement, index, ObservationType::Pseudorange,
-                                                gnss_base_options_.common))
+                                                gnss_base_options_.common, is_ppp_))
         {
             return false;
         }
@@ -656,7 +656,7 @@ class GnssEstimatorBase : public virtual EstimatorBase
         {
             return false;
         }
-        if (is_ppp_ && gnss_common::isBds1(index.prn))
+        if (is_ppp_ && (gnss_common::isBds1(index.prn) || gnss_common::isBds2(index.prn)))
         {
             return false;
         }

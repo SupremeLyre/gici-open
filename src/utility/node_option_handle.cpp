@@ -113,8 +113,8 @@ NodeOptionHandle::NodeOptionHandle(const YAML::Node &yaml_node) : valid(true)
         {
             LOG(ERROR) << nodes[i]->tag << ": "
                        << "At least one input tag or output tag should be specified!";
-            valid = false;
-            return;
+            // valid = false;
+            // return;
         }
 
         int n_out_fmts = 0, n_out_strs = 0, n_out_ests = 0;
@@ -151,12 +151,15 @@ NodeOptionHandle::NodeOptionHandle(const YAML::Node &yaml_node) : valid(true)
                 return;
             }
         }
+        bool has_post_file = false;
         if (nodes[i]->node_type == NodeType::Streamer)
         {
-            if (n_out_ests > 0 && nodes[i]->type != "ros")
+            if (nodes[i]->type == "post-file")
+                has_post_file = true;
+            if (n_out_ests > 0 && (nodes[i]->type != "ros" && nodes[i]->type != "post-file"))
             {
                 LOG(ERROR) << nodes[i]->tag << ": "
-                           << "Only ROS streamer is allowed to output to estimator!";
+                           << "Only ROS streamer or post file is allowed to output to estimator!";
                 valid = false;
                 return;
             }
@@ -204,6 +207,13 @@ NodeOptionHandle::NodeOptionHandle(const YAML::Node &yaml_node) : valid(true)
                 {
                     LOG(ERROR) << nodes[i]->tag << ": "
                                << "Getting data from estimators is not allowed by formator in input mode!";
+                    valid = false;
+                    return;
+                }
+                if (has_post_file)
+                {
+                    LOG(ERROR) << nodes[i]->tag << ": "
+                               << "Input streams are disabled in post-file replay mode!";
                     valid = false;
                     return;
                 }
