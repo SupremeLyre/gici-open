@@ -5,14 +5,14 @@ stream:
   - streamer:
       tag: str_gnss_rov_file
       type: post-file
-      path: <data-directory>/gnss_rover.23O  # converted by rtklib. Sample data is updated to dataset, namely *-rinex-imutext.
+      path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_rover.23O  # converted by rtklib. Sample data is updated to dataset, namely *-rinex-imutext.
       format:
         type: gnss-rinex
       latency: 0.0
   - streamer:
       tag: str_gnss_eph_file
       type: post-file
-      path: <data-directory>/gnss_ephemeris.23P
+      path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_ephemeris.23P
       burst_load: true  # burst load will load all data at once in the beginning
       format:
         type: gnss-rinex

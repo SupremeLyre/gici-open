@@ -134,6 +134,9 @@ bool RtkImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement 
     gnss_common::rearrangePhasesAndCodes(curGnssRov());
     gnss_common::rearrangePhasesAndCodes(curGnssRef());
 
+    const bool has_last_gnss_pair = gnss_measurement_pairs_.size() > 1 &&
+                                    !lastGnssRov().satellites.empty() && !lastGnssRef().satellites.empty();
+
     // Form double difference pair
     std::map<char, std::string> system_to_base_prn;
     GnssMeasurementDDIndexPairs phase_index_pairs =
@@ -142,7 +145,7 @@ bool RtkImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement 
         gnss_common::formPseudorangeDDPair(curGnssRov(), curGnssRef(), system_to_base_prn, gnss_base_options_.common);
 
     // Cycle-slip detection
-    if (!isFirstEpoch())
+    if (has_last_gnss_pair)
     {
         cycleSlipDetectionSD(lastGnssRov(), lastGnssRef(), curGnssRov(), curGnssRef(), gnss_base_options_.common);
     }
@@ -197,7 +200,8 @@ bool RtkImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement 
         // frequency
         addRelativeFrequencyResidualBlock(lastGnssState(), states_[index]);
         // ambiguity
-        addRelativeAmbiguityResidualBlock(lastGnssRov(), curGnssRov(), lastAmbiguityState(), curAmbiguityState());
+        if (has_last_gnss_pair)
+            addRelativeAmbiguityResidualBlock(lastGnssRov(), curGnssRov(), lastAmbiguityState(), curAmbiguityState());
     }
 
     // ZUPT

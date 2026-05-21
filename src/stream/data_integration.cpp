@@ -40,7 +40,6 @@ DataIntegrationBase::DataIntegrationBase(const std::shared_ptr<EstimatingBase> &
     }
 }
 
-// GNSS data integration
 DataIntegrationBase::DataIntegrationBase(const std::shared_ptr<EstimatingBase> &estimating,
                                          const std::shared_ptr<FilesReading> &files_reading,
                                          const std::vector<std::string> &streamer_tags,
@@ -319,6 +318,9 @@ void GnssDataIntegration::handleGNSS(const std::string &formator_tag, const std:
     rs = mat(6, n);
     dts = mat(2, n);
     var = mat(1, n);
+    rs_ssr = mat(6, n);
+    dts_ssr = mat(2, n);
+    var_ssr = mat(1, n);
     rs_prc = mat(6, n);
     dts_prc = mat(2, n);
     var_prc = mat(1, n);
@@ -486,7 +488,7 @@ void GnssDataIntegration::updateEphemerides(const nav_t *nav)
             continue;
         gnss_common::add_eph(gnss_local_->ephemeris, nav->eph + i);
     }
-    for (int i = 0; i < 2 * NSATGLO; i++)
+    for (int i = 0; i < nav->ng; i++)
     {
         if (nav->geph[i].sat <= 0)
             continue;
