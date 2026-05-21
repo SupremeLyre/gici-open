@@ -8,24 +8,16 @@
  **/
 #include "gici/ros_interface/ros_publisher.h"
 
-#include <cv_bridge/cv_bridge.h>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
-#include <geometry_msgs/Vector3Stamped.h>
-#include <gici_ros/GlonassEphemeris.h>
-#include <gici_ros/GnssAntennaPosition.h>
-#include <gici_ros/GnssEphemerides.h>
-#include <gici_ros/GnssIonosphereParameter.h>
-#include <gici_ros/GnssObservations.h>
-#include <gici_ros/GnssSsrCodeBiases.h>
-#include <gici_ros/GnssSsrEphemerides.h>
-#include <gici_ros/GnssSsrPhaseBiases.h>
+#include <cv_bridge/cv_bridge.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <opencv2/opencv.hpp>
-#include <pcl_conversions/pcl_conversions.h>
-#include <ros/package.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/NavSatFix.h>
-#include <sensor_msgs/image_encodings.h>
-#include <tf/tf.h>
+#include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
 
 #include "gici/gnss/gnss_common.h"
 
@@ -34,6 +26,25 @@ namespace gici
 
 // Configures
 const double position_scale = 1.0;
+
+static geometry_msgs::msg::TransformStamped makeTransformStamped(const Transformation &pose, const RosTime time,
+                                                                 const std::string &frame_id,
+                                                                 const std::string &child_frame_id)
+{
+    geometry_msgs::msg::TransformStamped transform_msg;
+    const Eigen::Quaterniond &q = pose.getRotation().toImplementation();
+    transform_msg.header.stamp = time;
+    transform_msg.header.frame_id = frame_id;
+    transform_msg.child_frame_id = child_frame_id;
+    transform_msg.transform.translation.x = pose.getPosition().x() * position_scale;
+    transform_msg.transform.translation.y = pose.getPosition().y() * position_scale;
+    transform_msg.transform.translation.z = pose.getPosition().z() * position_scale;
+    transform_msg.transform.rotation.x = q.x();
+    transform_msg.transform.rotation.y = q.y();
+    transform_msg.transform.rotation.z = q.z();
+    transform_msg.transform.rotation.w = q.w();
+    return transform_msg;
+}
 
 // Draw features on image
 static void drawFeatures(const Frame &frame, const bool only_matched_features, cv::Mat *img_rgb)
@@ -104,44 +115,45 @@ static void drawFeatures(const Frame &frame, const bool only_matched_features, c
 }
 
 // Publish image
-void publishImage(ros::Publisher &pub, const cv::Mat &image, const ros::Time time)
+void publishImage(RosPublisher &pub, const cv::Mat &image, const RosTime time)
 {
-    sensor_msgs::ImagePtr img_msg =
-        cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::MONO8, image).toImageMsg();
+    sensor_msgs::msg::Image::SharedPtr img_msg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::MONO8, image).toImageMsg();
     img_msg->header.stamp = time;
     pub.publish(img_msg);
 }
 
 // Publish raw image
-void publishImage(ros::Publisher &pub, const FramePtr &frame, const ros::Time time, const std::string &encoding)
+void publishImage(RosPublisher &pub, const FramePtr &frame, const RosTime time, const std::string &encoding)
 {
-    sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), encoding, frame->img_pyr_[0]).toImageMsg();
+    sensor_msgs::msg::Image::SharedPtr img_msg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), encoding, frame->img_pyr_[0]).toImageMsg();
     img_msg->header.stamp = time;
     pub.publish(img_msg);
 }
 
 // Publish image with features
-void publishFeaturedImage(ros::Publisher &pub, const FramePtr &frame, const ros::Time time)
+void publishFeaturedImage(RosPublisher &pub, const FramePtr &frame, const RosTime time)
 {
     cv::Mat img_rgb;
     drawFeatures(*frame, false, &img_rgb);
-    sensor_msgs::ImagePtr img_msg =
-        cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::BGR8, img_rgb).toImageMsg();
+    sensor_msgs::msg::Image::SharedPtr img_msg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::BGR8, img_rgb).toImageMsg();
     img_msg->header.stamp = time;
     pub.publish(img_msg);
 }
 
 // Publish landmarks
-void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time time, std::string frame_id,
+void publishLandmarks(RosPublisher &pub, const MapPtr &map, const RosTime time, std::string frame_id,
                       double marker_scale)
 {
     marker_scale *= position_scale;
-    visualization_msgs::Marker m;
+    visualization_msgs::msg::Marker m;
     m.header.frame_id = frame_id;
     m.header.stamp = time;
     m.ns = "landmarks";
     m.id = 0;
-    m.type = visualization_msgs::Marker::SPHERE_LIST;
+    m.type = visualization_msgs::msg::Marker::SPHERE_LIST;
     m.action = 0; // add/modify
     m.scale.x = marker_scale;
     m.scale.y = marker_scale;
@@ -163,7 +175,7 @@ void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time ti
             if (!isSeed(frame->type_vec_[i]))
                 continue;
             Eigen::Vector3d xyz = frame->landmark_vec_[i]->pos();
-            geometry_msgs::Point p;
+            geometry_msgs::msg::Point p;
             p.x = xyz.x() * position_scale;
             p.y = xyz.y() * position_scale;
             p.z = xyz.z() * position_scale;
@@ -174,9 +186,9 @@ void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time ti
 }
 
 // Publish pose
-void publishPoseStamped(ros::Publisher &pub, const Transformation &pose, const ros::Time time, std::string frame_id)
+void publishPoseStamped(RosPublisher &pub, const Transformation &pose, const RosTime time, std::string frame_id)
 {
-    geometry_msgs::PoseStamped pose_msg;
+    geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.frame_id = frame_id;
     pose_msg.header.stamp = time;
     pose_msg.pose.position.x = pose.getPosition()[0] * position_scale;
@@ -190,11 +202,11 @@ void publishPoseStamped(ros::Publisher &pub, const Transformation &pose, const r
 }
 
 // Publish pose with covariance
-void publishPoseWithCovarianceStamped(ros::Publisher &pub, const Transformation &pose,
-                                      const Eigen::Matrix<double, 6, 6> &covariance, const ros::Time time,
+void publishPoseWithCovarianceStamped(RosPublisher &pub, const Transformation &pose,
+                                      const Eigen::Matrix<double, 6, 6> &covariance, const RosTime time,
                                       std::string frame_id)
 {
-    geometry_msgs::PoseWithCovarianceStamped pose_msg;
+    geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
     pose_msg.header.frame_id = frame_id;
     pose_msg.header.stamp = time;
     pose_msg.pose.pose.position.x = pose.getPosition()[0] * position_scale;
@@ -215,71 +227,35 @@ void publishPoseWithCovarianceStamped(ros::Publisher &pub, const Transformation 
 }
 
 // Publish pose with transform
-void publishPoseWithTransform(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster, const Transformation &pose,
-                              const ros::Time time, std::string frame_id, std::string child_frame_id)
+void publishPoseWithTransform(RosPublisher &pub, RosTransformBroadcaster &broadcaster, const Transformation &pose,
+                              const RosTime time, std::string frame_id, std::string child_frame_id)
 {
-    // Publish transform
-    tf::Transform transform_msg;
-    auto &T = pose;
-    const Eigen::Quaterniond &q = T.getRotation().toImplementation();
-    transform_msg.setOrigin(tf::Vector3(T.getPosition().x() * position_scale, T.getPosition().y() * position_scale,
-                                        T.getPosition().z() * position_scale));
-    tf::Quaternion tf_q;
-    tf_q.setX(q.x());
-    tf_q.setY(q.y());
-    tf_q.setZ(q.z());
-    tf_q.setW(q.w());
-    transform_msg.setRotation(tf_q);
-    broadcaster.sendTransform(tf::StampedTransform(transform_msg, time, frame_id, child_frame_id));
+    broadcaster.sendTransform(makeTransformStamped(pose, time, frame_id, child_frame_id));
 
     // Publish pose
     publishPoseStamped(pub, pose, time, frame_id);
 }
 
 // Publish pose with covariance and transform
-void publishPoseWithCovarianceAndTransform(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster,
+void publishPoseWithCovarianceAndTransform(RosPublisher &pub, RosTransformBroadcaster &broadcaster,
                                            const Transformation &pose, const Eigen::Matrix<double, 6, 6> &covariance,
-                                           const ros::Time time, std::string frame_id, std::string child_frame_id)
+                                           const RosTime time, std::string frame_id, std::string child_frame_id)
 {
-    // Publish transform
-    tf::Transform transform_msg;
-    auto &T = pose;
-    const Eigen::Quaterniond &q = T.getRotation().toImplementation();
-    transform_msg.setOrigin(tf::Vector3(T.getPosition().x() * position_scale, T.getPosition().y() * position_scale,
-                                        T.getPosition().z() * position_scale));
-    tf::Quaternion tf_q;
-    tf_q.setX(q.x());
-    tf_q.setY(q.y());
-    tf_q.setZ(q.z());
-    tf_q.setW(q.w());
-    transform_msg.setRotation(tf_q);
-    broadcaster.sendTransform(tf::StampedTransform(transform_msg, time, frame_id, child_frame_id));
+    broadcaster.sendTransform(makeTransformStamped(pose, time, frame_id, child_frame_id));
 
     // Publish pose
     publishPoseWithCovarianceStamped(pub, pose, covariance, time, frame_id);
 }
 
 // Publish odometry
-void publishOdometry(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster, const Transformation &pose,
+void publishOdometry(RosPublisher &pub, RosTransformBroadcaster &broadcaster, const Transformation &pose,
                      const Eigen::Vector3d &velocity, const Eigen::Matrix<double, 9, 9> &covariance,
-                     const ros::Time time, std::string frame_id, std::string child_frame_id)
+                     const RosTime time, std::string frame_id, std::string child_frame_id)
 {
-    // Publish transform
-    tf::Transform transform_msg;
-    auto &T = pose;
-    const Eigen::Quaterniond &q = T.getRotation().toImplementation();
-    transform_msg.setOrigin(tf::Vector3(T.getPosition().x() * position_scale, T.getPosition().y() * position_scale,
-                                        T.getPosition().z() * position_scale));
-    tf::Quaternion tf_q;
-    tf_q.setX(q.x());
-    tf_q.setY(q.y());
-    tf_q.setZ(q.z());
-    tf_q.setW(q.w());
-    transform_msg.setRotation(tf_q);
-    broadcaster.sendTransform(tf::StampedTransform(transform_msg, time, frame_id, child_frame_id));
+    broadcaster.sendTransform(makeTransformStamped(pose, time, frame_id, child_frame_id));
 
     // Publish odometry
-    nav_msgs::Odometry odometry_msg;
+    nav_msgs::msg::Odometry odometry_msg;
     odometry_msg.child_frame_id = child_frame_id;
     odometry_msg.header.frame_id = frame_id;
     odometry_msg.header.stamp = time;
@@ -311,21 +287,21 @@ void publishOdometry(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster,
 }
 
 // Publish NavSatFix
-void publishNavSatFix(ros::Publisher &pub, const Eigen::Vector3d &lla, Eigen::Matrix3d &covariance,
-                      const ros::Time time, GnssSolutionStatus status)
+void publishNavSatFix(RosPublisher &pub, const Eigen::Vector3d &lla, Eigen::Matrix3d &covariance,
+                      const RosTime time, GnssSolutionStatus status)
 {
-    sensor_msgs::NavSatFix sat_msg;
+    sensor_msgs::msg::NavSatFix sat_msg;
     sat_msg.header.stamp = time;
     sat_msg.latitude = lla(0) * R2D;
     sat_msg.longitude = lla(1) * R2D;
     sat_msg.altitude = lla(2);
     if (covariance == Eigen::Matrix3d::Zero())
     {
-        sat_msg.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
+        sat_msg.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
     }
     else
     {
-        sat_msg.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_KNOWN;
+        sat_msg.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_KNOWN;
         for (size_t i = 0; i < 3; i++)
         {
             for (size_t j = 0; j < 3; j++)
@@ -334,21 +310,21 @@ void publishNavSatFix(ros::Publisher &pub, const Eigen::Vector3d &lla, Eigen::Ma
             }
         }
     }
-    sat_msg.status.service = sensor_msgs::NavSatStatus::SERVICE_GPS | sensor_msgs::NavSatStatus::SERVICE_GLONASS |
-                             sensor_msgs::NavSatStatus::SERVICE_GALILEO | sensor_msgs::NavSatStatus::SERVICE_COMPASS;
+    sat_msg.status.service = sensor_msgs::msg::NavSatStatus::SERVICE_GPS | sensor_msgs::msg::NavSatStatus::SERVICE_GLONASS |
+                             sensor_msgs::msg::NavSatStatus::SERVICE_GALILEO | sensor_msgs::msg::NavSatStatus::SERVICE_COMPASS;
     if (status == GnssSolutionStatus::Fixed)
     {
-        sat_msg.status.status = sensor_msgs::NavSatStatus::STATUS_FIX;
+        sat_msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_FIX;
     }
     else
     {
-        sat_msg.status.status = sensor_msgs::NavSatStatus::STATUS_NO_FIX;
+        sat_msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_NO_FIX;
     }
     pub.publish(sat_msg);
 }
 
 // Path publisher
-void PathPublisher::addPoseAndPublish(ros::Publisher &pub, const Transformation &pose, const ros::Time time,
+void PathPublisher::addPoseAndPublish(RosPublisher &pub, const Transformation &pose, const RosTime time,
                                       std::string frame_id)
 {
     if (!is_initialized_)
@@ -359,10 +335,10 @@ void PathPublisher::addPoseAndPublish(ros::Publisher &pub, const Transformation 
     }
 
     // check timestamp, we force the frequency less than 10 Hz
-    if (path_.poses.size() > 0 && !((time - path_.poses.back().header.stamp).toSec() >= 0.1 - 1e-4))
+    if (path_.poses.size() > 0 && !((time - RosTime(path_.poses.back().header.stamp)).seconds() >= 0.1 - 1e-4))
         return;
 
-    geometry_msgs::PoseStamped pose_msg;
+    geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.frame_id = path_.header.frame_id;
     pose_msg.header.stamp = time;
     pose_msg.pose.position.x = pose.getPosition()[0] * position_scale;
@@ -378,9 +354,9 @@ void PathPublisher::addPoseAndPublish(ros::Publisher &pub, const Transformation 
 }
 
 // Publish 3D error
-void publishError3d(ros::Publisher &pub, const Eigen::Vector3d &error, const ros::Time time, std::string frame_id)
+void publishError3d(RosPublisher &pub, const Eigen::Vector3d &error, const RosTime time, std::string frame_id)
 {
-    geometry_msgs::Vector3Stamped error_msg;
+    geometry_msgs::msg::Vector3Stamped error_msg;
     error_msg.header.frame_id = frame_id;
     error_msg.header.stamp = time;
     error_msg.vector.x = error(0);
@@ -391,10 +367,10 @@ void publishError3d(ros::Publisher &pub, const Eigen::Vector3d &error, const ros
 }
 
 // Publish IMU message
-void publishImu(ros::Publisher &pub, const DataCluster::IMU &imu)
+void publishImu(RosPublisher &pub, const DataCluster::IMU &imu)
 {
-    sensor_msgs::Imu imu_msg;
-    imu_msg.header.stamp = ros::Time(imu.time);
+    sensor_msgs::msg::Imu imu_msg;
+    imu_msg.header.stamp = rosTimeFromSec(imu.time);
     imu_msg.linear_acceleration.x = imu.acceleration[0];
     imu_msg.linear_acceleration.y = imu.acceleration[1];
     imu_msg.linear_acceleration.z = imu.acceleration[2];
@@ -406,10 +382,10 @@ void publishImu(ros::Publisher &pub, const DataCluster::IMU &imu)
 }
 
 // Publish IMU message
-void publishImu(ros::Publisher &pub, const ImuMeasurement &imu)
+void publishImu(RosPublisher &pub, const ImuMeasurement &imu)
 {
-    sensor_msgs::Imu imu_msg;
-    imu_msg.header.stamp = ros::Time(imu.timestamp);
+    sensor_msgs::msg::Imu imu_msg;
+    imu_msg.header.stamp = rosTimeFromSec(imu.timestamp);
     imu_msg.linear_acceleration.x = imu.linear_acceleration[0];
     imu_msg.linear_acceleration.y = imu.linear_acceleration[1];
     imu_msg.linear_acceleration.z = imu.linear_acceleration[2];
@@ -421,7 +397,7 @@ void publishImu(ros::Publisher &pub, const ImuMeasurement &imu)
 }
 
 // Publish GNSS message
-void publishGnssObservations(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssObservations(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssObservations msg;
     for (int i = 0; i < gnss.observation->n; i++)
@@ -441,21 +417,21 @@ void publishGnssObservations(ros::Publisher &pub, const DataCluster::GNSS &gnss)
         {
             if (obs->code[j] == CODE_NONE)
                 continue;
-            o.SNR.push_back(obs->SNR[j]);
-            o.LLI.push_back(obs->LLI[j]);
+            o.snr.push_back(obs->SNR[j]);
+            o.lli.push_back(obs->LLI[j]);
             o.code.push_back(gnss_common::codeTypeToRinexType(o.prn[0], obs->code[j]));
-            o.L.push_back(obs->L[j]);
-            o.P.push_back(obs->P[j]);
-            o.D.push_back(obs->D[j]);
+            o.l.push_back(obs->L[j]);
+            o.p.push_back(obs->P[j]);
+            o.d.push_back(obs->D[j]);
         }
         msg.observations.push_back(o);
     }
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }
 
-void publishGnssEphemerides(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssEphemerides(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssEphemerides msg;
     nav_t *nav = gnss.ephemeris;
@@ -479,7 +455,7 @@ void publishGnssEphemerides(ros::Publisher &pub, const DataCluster::GNSS &gnss)
             e.toes = time2gpst(eph->toe, NULL);
             e.toc = time2gpst(eph->toc, NULL);
         }
-        e.A = eph->A;
+        e.a = eph->A;
         e.sva = eph->sva;
         e.code = eph->code;
         e.idot = eph->idot;
@@ -490,18 +466,18 @@ void publishGnssEphemerides(ros::Publisher &pub, const DataCluster::GNSS &gnss)
         e.iodc = eph->iodc;
         e.crs = eph->crs;
         e.deln = eph->deln;
-        e.M0 = eph->M0;
+        e.m0 = eph->M0;
         e.cuc = eph->cuc;
         e.e = eph->e;
         e.cus = eph->cus;
         e.toes = eph->toes;
         e.cic = eph->cic;
-        e.OMG0 = eph->OMG0;
+        e.omg0 = eph->OMG0;
         e.cis = eph->cis;
         e.i0 = eph->i0;
         e.crc = eph->crc;
         e.omg = eph->omg;
-        e.OMGd = eph->OMGd;
+        e.omgd = eph->OMGd;
         for (int j = 0; j < 6; j++)
         {
             if (eph->tgd[j] != 0.0)
@@ -540,24 +516,24 @@ void publishGnssEphemerides(ros::Publisher &pub, const DataCluster::GNSS &gnss)
         e.age = geph->age;
         msg.glonass_ephemerides.push_back(e);
     }
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }
 
-void publishGnssAntennaPosition(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssAntennaPosition(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssAntennaPosition msg;
     for (size_t i = 0; i < 3; i++)
     {
         msg.pos.push_back(gnss.antenna->pos[i]);
     }
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }
 
-void publishGnssIonosphereParameter(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssIonosphereParameter(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssIonosphereParameter msg;
     // use GPS parameters
@@ -566,12 +542,12 @@ void publishGnssIonosphereParameter(ros::Publisher &pub, const DataCluster::GNSS
     {
         msg.parameters.push_back(gnss.ephemeris->ion_gps[i]);
     }
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }
 
-void publishGnssSsrCodeBiases(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssSsrCodeBiases(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssSsrCodeBiases msg;
     for (int i = 0; i < MAXSAT; i++)
@@ -602,12 +578,12 @@ void publishGnssSsrCodeBiases(ros::Publisher &pub, const DataCluster::GNSS &gnss
     }
     if (msg.biases.size() == 0)
         return;
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }
 
-void publishGnssSsrPhaseBiases(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssSsrPhaseBiases(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssSsrPhaseBiases msg;
     for (int i = 0; i < MAXSAT; i++)
@@ -639,12 +615,12 @@ void publishGnssSsrPhaseBiases(ros::Publisher &pub, const DataCluster::GNSS &gns
     }
     if (msg.biases.size() == 0)
         return;
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }
 
-void publishGnssSsrEphemerides(ros::Publisher &pub, const DataCluster::GNSS &gnss)
+void publishGnssSsrEphemerides(RosPublisher &pub, const DataCluster::GNSS &gnss)
 {
     gici_ros::GnssSsrEphemerides msg;
     for (int i = 0; i < MAXSAT; i++)
@@ -674,7 +650,7 @@ void publishGnssSsrEphemerides(ros::Publisher &pub, const DataCluster::GNSS &gns
     }
     if (msg.corrections.size() == 0)
         return;
-    msg.header.stamp = ros::Time::now();
+    msg.header.stamp = rosNow();
 
     pub.publish(msg);
 }

@@ -58,3 +58,7 @@ data*/
 bin/
 lib/
 *.atx
+# Cache files
+.cache/
+install/
+log/

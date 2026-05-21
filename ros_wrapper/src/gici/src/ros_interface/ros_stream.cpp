@@ -8,9 +8,8 @@
  **/
 #include "gici/ros_interface/ros_stream.h"
 
-#include <cv_bridge/cv_bridge.h>
-#include <image_transport/image_transport.h>
-#include <sensor_msgs/image_encodings.h>
+#include <cv_bridge/cv_bridge.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 
 #include "gici/gnss/gnss_common.h"
 #include "gici/utility/spin_control.h"
@@ -21,8 +20,8 @@ namespace gici
 // Static variables for stream binding
 std::vector<RosStream *> RosStream::static_this_;
 
-RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int istreamer)
-    : Streaming(), nh_(nh), frame_id_("World"), valid_(false)
+RosStream::RosStream(const RosNodePtr &node, const NodeOptionHandlePtr &nodes, int istreamer)
+    : Streaming(), node_(node), frame_id_("World"), valid_(false)
 {
     // Get streamer option
     const auto &streamer_node = nodes->streamers[istreamer];
@@ -81,12 +80,12 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         data_format_ = RosDataFormat::Image;
         if (io_type_ == StreamIOType::Input)
         {
-            subscribers_.push_back(nh_.subscribe<sensor_msgs::Image>(topic_name_, queue_size_,
-                                                                     boost::bind(&RosStream::imageCallback, this, _1)));
+            addSubscription<sensor_msgs::msg::Image>(
+                topic_name_, std::bind(&RosStream::imageCallback, this, std::placeholders::_1));
         }
         else
         {
-            publishers_.push_back(nh_.advertise<sensor_msgs::Image>(topic_name_, queue_size_));
+            addPublisher<sensor_msgs::msg::Image>(topic_name_);
         }
     }
     else if (data_format == "imu")
@@ -94,12 +93,12 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         data_format_ = RosDataFormat::Imu;
         if (io_type_ == StreamIOType::Input)
         {
-            subscribers_.push_back(nh_.subscribe<sensor_msgs::Imu>(topic_name_, queue_size_,
-                                                                   boost::bind(&RosStream::imuCallback, this, _1)));
+            addSubscription<sensor_msgs::msg::Imu>(
+                topic_name_, std::bind(&RosStream::imuCallback, this, std::placeholders::_1));
         }
         else
         {
-            publishers_.push_back(nh_.advertise<sensor_msgs::Imu>(topic_name_, queue_size_));
+            addPublisher<sensor_msgs::msg::Imu>(topic_name_);
         }
     }
     else if (data_format == "gnss_raw")
@@ -110,51 +109,51 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
             bool enable = false;
             if (option_tools::safeGet(streamer_node->this_node, "enable_observation", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssObservations>(
-                    topic_name_ + "/observations", queue_size_,
-                    boost::bind(&RosStream::gnssObservationsCallback, this, _1)));
+                addSubscription<gici_ros::GnssObservations>(
+                    topic_name_ + "/observations",
+                    std::bind(&RosStream::gnssObservationsCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::Observations);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ephemeris", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssEphemerides>(
-                    topic_name_ + "/ephemerides", queue_size_,
-                    boost::bind(&RosStream::gnssEphemeridesCallback, this, _1)));
+                addSubscription<gici_ros::GnssEphemerides>(
+                    topic_name_ + "/ephemerides",
+                    std::bind(&RosStream::gnssEphemeridesCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::Ephemerides);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_antenna_position", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssAntennaPosition>(
-                    topic_name_ + "/antenna_position", queue_size_,
-                    boost::bind(&RosStream::gnssAntennaPositionCallback, this, _1)));
+                addSubscription<gici_ros::GnssAntennaPosition>(
+                    topic_name_ + "/antenna_position",
+                    std::bind(&RosStream::gnssAntennaPositionCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::AntennaPosition);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ionosphere_parameter", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssIonosphereParameter>(
-                    topic_name_ + "/ionosphere_parameter", queue_size_,
-                    boost::bind(&RosStream::gnssIonosphereParameterCallback, this, _1)));
+                addSubscription<gici_ros::GnssIonosphereParameter>(
+                    topic_name_ + "/ionosphere_parameter",
+                    std::bind(&RosStream::gnssIonosphereParameterCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::IonosphereParameter);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ssr_code_bias", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssSsrCodeBiases>(
-                    topic_name_ + "/code_bias", queue_size_,
-                    boost::bind(&RosStream::gnssSsrCodeBiasesCallback, this, _1)));
+                addSubscription<gici_ros::GnssSsrCodeBiases>(
+                    topic_name_ + "/code_bias",
+                    std::bind(&RosStream::gnssSsrCodeBiasesCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::CodeBias);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ssr_phase_bias", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssSsrPhaseBiases>(
-                    topic_name_ + "/phase_bias", queue_size_,
-                    boost::bind(&RosStream::gnssSsrPhaseBiasesCallback, this, _1)));
+                addSubscription<gici_ros::GnssSsrPhaseBiases>(
+                    topic_name_ + "/phase_bias",
+                    std::bind(&RosStream::gnssSsrPhaseBiasesCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::PhaseBias);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ssr_ephemeris", &enable))
             {
-                subscribers_.push_back(nh_.subscribe<gici_ros::GnssSsrEphemerides>(
-                    topic_name_ + "/ephemerides_correction", queue_size_,
-                    boost::bind(&RosStream::gnssSsrEphemeridesCallback, this, _1)));
+                addSubscription<gici_ros::GnssSsrEphemerides>(
+                    topic_name_ + "/ephemerides_correction",
+                    std::bind(&RosStream::gnssSsrEphemeridesCallback, this, std::placeholders::_1));
                 gnss_formats_.push_back(RosGnssDataFormat::EphemeridesCorrection);
             }
         }
@@ -163,44 +162,37 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
             bool enable = false;
             if (option_tools::safeGet(streamer_node->this_node, "enable_observation", &enable))
             {
-                publishers_.push_back(
-                    nh_.advertise<gici_ros::GnssObservations>(topic_name_ + "/observations", queue_size_));
+                addPublisher<gici_ros::GnssObservations>(topic_name_ + "/observations");
                 gnss_formats_.push_back(RosGnssDataFormat::Observations);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ephemeris", &enable))
             {
-                publishers_.push_back(
-                    nh_.advertise<gici_ros::GnssEphemerides>(topic_name_ + "/ephemerides", queue_size_));
+                addPublisher<gici_ros::GnssEphemerides>(topic_name_ + "/ephemerides");
                 gnss_formats_.push_back(RosGnssDataFormat::Ephemerides);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_antenna_position", &enable))
             {
-                publishers_.push_back(
-                    nh_.advertise<gici_ros::GnssAntennaPosition>(topic_name_ + "/antenna_position", queue_size_));
+                addPublisher<gici_ros::GnssAntennaPosition>(topic_name_ + "/antenna_position");
                 gnss_formats_.push_back(RosGnssDataFormat::AntennaPosition);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ionosphere_parameter", &enable))
             {
-                publishers_.push_back(nh_.advertise<gici_ros::GnssIonosphereParameter>(
-                    topic_name_ + "/ionosphere_parameter", queue_size_));
+                addPublisher<gici_ros::GnssIonosphereParameter>(topic_name_ + "/ionosphere_parameter");
                 gnss_formats_.push_back(RosGnssDataFormat::IonosphereParameter);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ssr_code_bias", &enable))
             {
-                publishers_.push_back(
-                    nh_.advertise<gici_ros::GnssSsrCodeBiases>(topic_name_ + "/code_bias", queue_size_));
+                addPublisher<gici_ros::GnssSsrCodeBiases>(topic_name_ + "/code_bias");
                 gnss_formats_.push_back(RosGnssDataFormat::CodeBias);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ssr_phase_bias", &enable))
             {
-                publishers_.push_back(
-                    nh_.advertise<gici_ros::GnssSsrPhaseBiases>(topic_name_ + "/phase_bias", queue_size_));
+                addPublisher<gici_ros::GnssSsrPhaseBiases>(topic_name_ + "/phase_bias");
                 gnss_formats_.push_back(RosGnssDataFormat::PhaseBias);
             }
             if (option_tools::safeGet(streamer_node->this_node, "enable_ssr_ephemeris", &enable))
             {
-                publishers_.push_back(
-                    nh_.advertise<gici_ros::GnssSsrEphemerides>(topic_name_ + "/ephemerides_correction", queue_size_));
+                addPublisher<gici_ros::GnssSsrEphemerides>(topic_name_ + "/ephemerides_correction");
                 gnss_formats_.push_back(RosGnssDataFormat::EphemeridesCorrection);
             }
         }
@@ -216,11 +208,11 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         }
         else
         {
-            publishers_.push_back(nh_.advertise<geometry_msgs::PoseStamped>(topic_name_, queue_size_));
+            addPublisher<geometry_msgs::msg::PoseStamped>(topic_name_);
             // publish transform if sub-frame is specified
             if (option_tools::safeGet(streamer_node->this_node, "subframe_id", &subframe_id_))
             {
-                tranform_broadcaster_ = std::make_unique<tf::TransformBroadcaster>();
+                tranform_broadcaster_ = std::make_unique<RosTransformBroadcaster>(node_);
             }
         }
     }
@@ -229,8 +221,8 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         data_format_ = RosDataFormat::PoseWithCovarianceStamped;
         if (io_type_ == StreamIOType::Input)
         {
-            subscribers_.push_back(nh_.subscribe<geometry_msgs::PoseWithCovarianceStamped>(
-                topic_name_, queue_size_, boost::bind(&RosStream::poseCallback, this, _1)));
+            addSubscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+                topic_name_, std::bind(&RosStream::poseCallback, this, std::placeholders::_1));
             // we need a coordinate zero for local frame to global frame convertion
             std::vector<double> initial_global_position_vec;
             if (option_tools::safeGet(streamer_node->this_node, "initial_global_position",
@@ -254,11 +246,11 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         }
         else
         {
-            publishers_.push_back(nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(topic_name_, queue_size_));
+            addPublisher<geometry_msgs::msg::PoseWithCovarianceStamped>(topic_name_);
             // publish transform if sub-frame is specified
             if (option_tools::safeGet(streamer_node->this_node, "subframe_id", &subframe_id_))
             {
-                tranform_broadcaster_ = std::make_unique<tf::TransformBroadcaster>();
+                tranform_broadcaster_ = std::make_unique<RosTransformBroadcaster>(node_);
             }
         }
     }
@@ -272,11 +264,11 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         }
         else
         {
-            publishers_.push_back(nh_.advertise<nav_msgs::Odometry>(topic_name_, queue_size_));
+            addPublisher<nav_msgs::msg::Odometry>(topic_name_);
             // publish transform if sub-frame is specified
             if (option_tools::safeGet(streamer_node->this_node, "subframe_id", &subframe_id_))
             {
-                tranform_broadcaster_ = std::make_unique<tf::TransformBroadcaster>();
+                tranform_broadcaster_ = std::make_unique<RosTransformBroadcaster>(node_);
             }
             else
             {
@@ -290,12 +282,12 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         data_format_ = RosDataFormat::NavSatFix;
         if (io_type_ == StreamIOType::Input)
         {
-            subscribers_.push_back(nh_.subscribe<sensor_msgs::NavSatFix>(
-                topic_name_, queue_size_, boost::bind(&RosStream::navSatFixCallback, this, _1)));
+            addSubscription<sensor_msgs::msg::NavSatFix>(
+                topic_name_, std::bind(&RosStream::navSatFixCallback, this, std::placeholders::_1));
         }
         else
         {
-            publishers_.push_back(nh_.advertise<sensor_msgs::NavSatFix>(topic_name_, queue_size_));
+            addPublisher<sensor_msgs::msg::NavSatFix>(topic_name_);
         }
     }
     else if (data_format == "marker")
@@ -309,7 +301,7 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         else
         {
             option_tools::safeGet(streamer_node->this_node, "marker_scale", &marker_scale_);
-            publishers_.push_back(nh_.advertise<visualization_msgs::Marker>(topic_name_, queue_size_));
+            addPublisher<visualization_msgs::msg::Marker>(topic_name_);
         }
     }
     else if (data_format == "path")
@@ -322,7 +314,7 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
         }
         else
         {
-            publishers_.push_back(nh_.advertise<nav_msgs::Path>(topic_name_, queue_size_));
+            addPublisher<nav_msgs::msg::Path>(topic_name_);
         }
         path_publisher_ = std::make_unique<PathPublisher>();
     }
@@ -336,6 +328,13 @@ RosStream::RosStream(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes, int 
 
 RosStream::~RosStream()
 {
+}
+
+std::string RosStream::resolveTopicName(const std::string &topic_name) const
+{
+    if (topic_name.empty() || topic_name[0] == '/' || topic_name[0] == '~')
+        return topic_name;
+    return "~/" + topic_name;
 }
 
 // Output data callback
@@ -402,11 +401,11 @@ void RosStream::solutionOutputCallback(std::string tag, Solution &solution)
         if (tranform_broadcaster_)
         {
             publishPoseWithTransform(publishers_[0], *tranform_broadcaster_, solution.pose,
-                                     ros::Time(solution.timestamp), frame_id_, subframe_id_);
+                                     rosTimeFromSec(solution.timestamp), frame_id_, subframe_id_);
         }
         else
         {
-            publishPoseStamped(publishers_[0], solution.pose, ros::Time(solution.timestamp), frame_id_);
+            publishPoseStamped(publishers_[0], solution.pose, rosTimeFromSec(solution.timestamp), frame_id_);
         }
     }
     else if (data_format_ == RosDataFormat::PoseWithCovarianceStamped)
@@ -414,32 +413,32 @@ void RosStream::solutionOutputCallback(std::string tag, Solution &solution)
         if (tranform_broadcaster_)
         {
             publishPoseWithCovarianceAndTransform(publishers_[0], *tranform_broadcaster_, solution.pose,
-                                                  solution.covariance.block<6, 6>(0, 0), ros::Time(solution.timestamp),
+                                                  solution.covariance.block<6, 6>(0, 0), rosTimeFromSec(solution.timestamp),
                                                   frame_id_, subframe_id_);
         }
         else
         {
             publishPoseWithCovarianceStamped(publishers_[0], solution.pose, solution.covariance.block<6, 6>(0, 0),
-                                             ros::Time(solution.timestamp), frame_id_);
+                                             rosTimeFromSec(solution.timestamp), frame_id_);
         }
     }
     else if (data_format_ == RosDataFormat::Odometry)
     {
         CHECK_NOTNULL(tranform_broadcaster_);
         publishOdometry(publishers_[0], *tranform_broadcaster_, solution.pose, solution.speed_and_bias.head<3>(),
-                        solution.covariance.block<9, 9>(0, 0), ros::Time(solution.timestamp), frame_id_, subframe_id_);
+                        solution.covariance.block<9, 9>(0, 0), rosTimeFromSec(solution.timestamp), frame_id_, subframe_id_);
     }
     else if (data_format_ == RosDataFormat::NavSatFix)
     {
         Eigen::Vector3d lla = solution.coordinate->convert(solution.pose.getPosition(), GeoType::ENU, GeoType::LLA);
         Eigen::Matrix3d lla_covariance =
             solution.coordinate->convertCovariance(solution.covariance.topLeftCorner(3, 3), GeoType::ENU, GeoType::NED);
-        publishNavSatFix(publishers_[0], lla, lla_covariance, ros::Time(solution.timestamp), solution.status);
+        publishNavSatFix(publishers_[0], lla, lla_covariance, rosTimeFromSec(solution.timestamp), solution.status);
     }
     else if (data_format_ == RosDataFormat::Path)
     {
         CHECK_NOTNULL(path_publisher_);
-        path_publisher_->addPoseAndPublish(publishers_[0], solution.pose, ros::Time(solution.timestamp), frame_id_);
+        path_publisher_->addPoseAndPublish(publishers_[0], solution.pose, rosTimeFromSec(solution.timestamp), frame_id_);
     }
 }
 
@@ -448,7 +447,7 @@ void RosStream::featuredImageOutputCallback(FramePtr &frame)
 {
     if (data_format_ == RosDataFormat::Image)
     {
-        publishFeaturedImage(publishers_[0], frame, ros::Time(frame->getTimestampSec()));
+        publishFeaturedImage(publishers_[0], frame, rosTimeFromSec(frame->getTimestampSec()));
     }
 }
 
@@ -459,7 +458,7 @@ void RosStream::mapPointOutputCallback(MapPtr &map)
     {
         if (map->numKeyframes() == 0)
             return;
-        publishLandmarks(publishers_[0], map, ros::Time(map->getLastKeyframe()->getTimestampSec()), frame_id_,
+        publishLandmarks(publishers_[0], map, rosTimeFromSec(map->getLastKeyframe()->getTimestampSec()), frame_id_,
                          marker_scale_);
     }
 }
@@ -540,18 +539,18 @@ void RosStream::imageDataOutputCallback(DataCluster::Image &image)
     if (data_format_ == RosDataFormat::Image)
     {
         cv::Mat cv_iamge(image.height, image.width, CV_8UC1, image.image);
-        publishImage(publishers_[0], cv_iamge, ros::Time(image.time));
+        publishImage(publishers_[0], cv_iamge, rosTimeFromSec(image.time));
     }
 }
 
 // ROS callbacks
-void RosStream::imageCallback(const sensor_msgs::ImageConstPtr &msg)
+void RosStream::imageCallback(const sensor_msgs::msg::Image::ConstSharedPtr &msg)
 {
     // Note that we set MONO8 as default, if the input image is colored image,
     // you should add a convertion here
     cv_bridge::CvImageConstPtr ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::MONO8);
     cv::Mat image = ptr->image;
-    double timestamp = msg->header.stamp.toSec();
+    double timestamp = RosTime(msg->header.stamp).seconds();
     std::shared_ptr<DataCluster> data_cluster =
         std::make_shared<DataCluster>(FormatorType::ImagePack, image.cols, image.rows, 1);
     data_cluster->image->time = timestamp;
@@ -570,11 +569,11 @@ void RosStream::imageCallback(const sensor_msgs::ImageConstPtr &msg)
     }
 }
 
-void RosStream::imuCallback(const sensor_msgs::ImuConstPtr &msg)
+void RosStream::imuCallback(const sensor_msgs::msg::Imu::ConstSharedPtr &msg)
 {
     // Convert IMU data
     std::shared_ptr<DataCluster> data_cluster = std::make_shared<DataCluster>(FormatorType::IMUPack);
-    data_cluster->imu->time = msg->header.stamp.toSec();
+    data_cluster->imu->time = RosTime(msg->header.stamp).seconds();
     data_cluster->imu->acceleration[0] = msg->linear_acceleration.x;
     data_cluster->imu->acceleration[1] = msg->linear_acceleration.y;
     data_cluster->imu->acceleration[2] = msg->linear_acceleration.z;
@@ -610,12 +609,12 @@ void RosStream::gnssObservationsCallback(const gici_ros::GnssObservationsConstPt
         obs->rcv = 0;
         for (size_t i = 0; i < o.code.size(); i++)
         {
-            obs->SNR[i] = o.SNR[i];
-            obs->LLI[i] = o.LLI[i];
+            obs->SNR[i] = o.snr[i];
+            obs->LLI[i] = o.lli[i];
             obs->code[i] = gnss_common::rinexTypeToCodeType(o.prn[0], o.code[i]);
-            obs->L[i] = o.L[i];
-            obs->P[i] = o.P[i];
-            obs->D[i] = o.D[i];
+            obs->L[i] = o.l[i];
+            obs->P[i] = o.p[i];
+            obs->D[i] = o.d[i];
         }
         data_cluster->gnss->observation->n++;
     }
@@ -660,7 +659,7 @@ void RosStream::gnssEphemeridesCallback(const gici_ros::GnssEphemeridesConstPtr 
             eph.toe = gpst2time(e.week, e.toes);
             eph.toc = gpst2time(e.week, e.toc);
         }
-        eph.A = e.A;
+        eph.A = e.a;
         eph.sva = e.sva;
         eph.code = e.code;
         eph.idot = e.idot;
@@ -671,18 +670,18 @@ void RosStream::gnssEphemeridesCallback(const gici_ros::GnssEphemeridesConstPtr 
         eph.iodc = e.iodc;
         eph.crs = e.crs;
         eph.deln = e.deln;
-        eph.M0 = e.M0;
+        eph.M0 = e.m0;
         eph.cuc = e.cuc;
         eph.e = e.e;
         eph.cus = e.cus;
         eph.toes = e.toes;
         eph.cic = e.cic;
-        eph.OMG0 = e.OMG0;
+        eph.OMG0 = e.omg0;
         eph.cis = e.cis;
         eph.i0 = e.i0;
         eph.crc = e.crc;
         eph.omg = e.omg;
-        eph.OMGd = e.OMGd;
+        eph.OMGd = e.omgd;
         for (size_t i = 0; i < e.tgd.size(); i++)
             eph.tgd[i] = e.tgd[i];
         eph.svh = e.svh;
@@ -897,11 +896,11 @@ void RosStream::gnssSsrEphemeridesCallback(const gici_ros::GnssSsrEphemeridesCon
     }
 }
 
-void RosStream::poseCallback(const geometry_msgs::PoseWithCovarianceStampedConstPtr &msg)
+void RosStream::poseCallback(const geometry_msgs::msg::PoseWithCovarianceStamped::ConstSharedPtr &msg)
 {
     // Convert data
     Solution solution;
-    solution.timestamp = msg->header.stamp.toSec();
+    solution.timestamp = RosTime(msg->header.stamp).seconds();
     solution.coordinate = input_coordinate_;
     Eigen::Vector3d p(msg->pose.pose.position.x, msg->pose.pose.position.y, msg->pose.pose.position.z);
     Eigen::Quaterniond q(msg->pose.pose.orientation.w, msg->pose.pose.orientation.x, msg->pose.pose.orientation.y,
@@ -931,11 +930,11 @@ void RosStream::poseCallback(const geometry_msgs::PoseWithCovarianceStampedConst
     }
 }
 
-void RosStream::navSatFixCallback(const sensor_msgs::NavSatFixConstPtr &msg)
+void RosStream::navSatFixCallback(const sensor_msgs::msg::NavSatFix::ConstSharedPtr &msg)
 {
     // Convert data
     Solution solution;
-    solution.timestamp = msg->header.stamp.toSec();
+    solution.timestamp = RosTime(msg->header.stamp).seconds();
     Eigen::Vector3d lla;
     lla(0) = msg->latitude * D2R;
     lla(1) = msg->longitude * D2R;
@@ -947,7 +946,7 @@ void RosStream::navSatFixCallback(const sensor_msgs::NavSatFixConstPtr &msg)
     solution.coordinate = input_coordinate_;
     solution.pose =
         Transformation(input_coordinate_->convert(lla, GeoType::LLA, GeoType::ENU), Eigen::Quaterniond::Identity());
-    if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_FIX)
+    if (msg->status.status == sensor_msgs::msg::NavSatStatus::STATUS_FIX)
     {
         solution.status = GnssSolutionStatus::Fixed;
     }
@@ -956,7 +955,7 @@ void RosStream::navSatFixCallback(const sensor_msgs::NavSatFixConstPtr &msg)
         solution.status = GnssSolutionStatus::Float;
     }
     solution.covariance.setZero();
-    if (msg->position_covariance_type != sensor_msgs::NavSatFix::COVARIANCE_TYPE_UNKNOWN)
+    if (msg->position_covariance_type != sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN)
     {
         for (size_t i = 0; i < 3; i++)
         {

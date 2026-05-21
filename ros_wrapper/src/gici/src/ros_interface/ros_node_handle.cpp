@@ -11,7 +11,7 @@
 namespace gici
 {
 
-RosNodeHandle::RosNodeHandle(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes) : NodeHandle(nodes)
+RosNodeHandle::RosNodeHandle(const RosNodePtr &node, const NodeOptionHandlePtr &nodes) : NodeHandle(nodes)
 {
     // Initialize ROS streamers
     for (size_t i = 0; i < nodes->streamers.size(); i++)
@@ -37,7 +37,7 @@ RosNodeHandle::RosNodeHandle(ros::NodeHandle &nh, const NodeOptionHandlePtr &nod
             continue;
         }
 
-        auto stream = std::make_shared<RosStream>(nh, nodes, i);
+        auto stream = std::make_shared<RosStream>(node, nodes, i);
         if (!stream->valid())
             continue;
         ros_streams_.push_back(stream);

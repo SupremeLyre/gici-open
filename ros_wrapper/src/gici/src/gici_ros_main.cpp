@@ -6,7 +6,10 @@
  *
  * Copyright (C) 2023 by Cheng Chi, All rights reserved.
  **/
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
+
+#include <string>
+#include <vector>
 
 #include "gici/ros_interface/ros_node_handle.h"
 #include "gici/utility/node_option_handle.h"
@@ -16,21 +19,21 @@
 using namespace gici;
 
 // Process streamers and estimators which defined in config.yaml file.
-// Usage: rosrun gici_ros ros_gici_main <path-to-config>
+// Usage: ros2 run gici_ros gici_ros_main <path-to-config>
 int main(int argc, char **argv)
 {
     // Initialize ROS
-    ros::init(argc, argv, "gici");
-    ros::NodeHandle nh("~");
+    std::vector<std::string> arguments = rclcpp::init_and_remove_ros_arguments(argc, argv);
+    auto node = rclcpp::Node::make_shared("gici");
 
     // Get config file
-    if (argc != 2)
+    if (arguments.size() != 2)
     {
         std::cerr << "Invalid input variables! Supported variables are: "
                   << "<path-to-executable> <path-to-config>" << std::endl;
         return -1;
     }
-    std::string config_file_path = argv[1];
+    std::string config_file_path = arguments[1];
     YAML::Node yaml_node;
     try
     {
@@ -74,7 +77,7 @@ int main(int argc, char **argv)
     }
 
     // Initialize nodes
-    std::unique_ptr<RosNodeHandle> node_handle = std::make_unique<RosNodeHandle>(nh, node_option_handle);
+    std::unique_ptr<RosNodeHandle> node_handle = std::make_unique<RosNodeHandle>(node, node_option_handle);
 
     // Show information
     const std::vector<size_t> sizes = {node_option_handle->streamers.size(), node_option_handle->formators.size(),
@@ -88,7 +91,8 @@ int main(int argc, char **argv)
     SpinControl::run();
 
     // Loop
-    ros::spin();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
 
     return 0;
 }

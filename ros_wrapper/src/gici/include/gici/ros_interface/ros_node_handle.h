@@ -23,7 +23,7 @@ namespace gici
 class RosNodeHandle : public NodeHandle
 {
   public:
-    RosNodeHandle(ros::NodeHandle &nh, const NodeOptionHandlePtr &nodes);
+    RosNodeHandle(const RosNodePtr &node, const NodeOptionHandlePtr &nodes);
     ~RosNodeHandle();
 
   protected:
