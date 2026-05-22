@@ -7,9 +7,10 @@
  * Copyright (C) 2023 by Cheng Chi, All rights reserved.
  **/
 #include "gici/gnss/gnss_common.h"
+#include "gici/ros_utility/ros_types.h"
 #include "gici/stream/format_imu.h"
-#include <rosbag/bag.h>
-#include <sensor_msgs/Imu.h>
+#include <rosbag2_cpp/writer.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 using namespace gici;
 
@@ -30,13 +31,12 @@ int main(int argc, char **argv)
     FILE *fp_imu_pack = fopen(imu_pack_path, "r");
     char buf[1034];
     sprintf(buf, "%s.bag", imu_pack_path);
-    rosbag::Bag bag;
-    bag.open(buf, rosbag::bagmode::Write);
+    rosbag2_cpp::Writer bag;
+    bag.open(buf);
 
     // Write rosbag
     imu_t imu;
-    sensor_msgs::Imu msg;
-    int cnt = 0;
+    sensor_msgs::msg::Imu msg;
     init_imu(&imu);
     while (size_t n = fread(buf, 1, 1034, fp_imu_pack))
     {
@@ -44,15 +44,14 @@ int main(int argc, char **argv)
         {
             if (!(input_imu(&imu, buf[i]) == 1))
                 continue;
-            msg.header.seq = ++cnt;
-            msg.header.stamp = ros::Time(gnss_common::gtimeToDouble(imu.time));
+            msg.header.stamp = rosTimeFromSec(gnss_common::gtimeToDouble(imu.time));
             msg.angular_velocity.x = imu.gyro[0];
             msg.angular_velocity.y = imu.gyro[1];
             msg.angular_velocity.z = imu.gyro[2];
             msg.linear_acceleration.x = imu.acc[0];
             msg.linear_acceleration.y = imu.acc[1];
             msg.linear_acceleration.z = imu.acc[2];
-            bag.write(topic_name, msg.header.stamp, msg);
+            bag.write(msg, topic_name, msg.header.stamp);
         }
     }
 

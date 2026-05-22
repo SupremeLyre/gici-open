@@ -7,11 +7,14 @@
  * Copyright (C) 2023 by Cheng Chi, All rights reserved.
  **/
 #include "gici/gnss/gnss_common.h"
+#include "gici/ros_utility/ros_types.h"
 #include "gici/stream/format_image.h"
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
-#include <rosbag/bag.h>
-#include <sensor_msgs/Image.h>
+#include <rosbag2_cpp/writer.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/header.hpp>
 
 using namespace gici;
 
@@ -42,12 +45,11 @@ int main(int argc, char **argv)
     FILE *fp_imagepack = fopen(imagepack_path, "r");
     char buf[1034];
     sprintf(buf, "%s.bag", imagepack_path);
-    rosbag::Bag bag;
-    bag.open(buf, rosbag::bagmode::Write);
+    rosbag2_cpp::Writer bag;
+    bag.open(buf);
 
     int n = 0;
     img_t img;
-    int cnt = 0;
     init_img(&img, image_width, image_height, image_step);
     while ((n = fread(buf, sizeof(char), 1034, fp_imagepack)) != 0)
     {
@@ -56,11 +58,10 @@ int main(int argc, char **argv)
             if (!input_image(&img, buf[i]))
                 continue;
             cv::Mat image_mat(img.height, img.width, CV_8UC(img.step), img.image);
-            sensor_msgs::ImagePtr img_msg =
-                cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::MONO8, image_mat).toImageMsg();
-            img_msg->header.seq = ++cnt;
-            img_msg->header.stamp = ros::Time(gnss_common::gtimeToDouble(img.time));
-            bag.write(topic_name, img_msg->header.stamp, *img_msg);
+            sensor_msgs::msg::Image::SharedPtr img_msg =
+                cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::MONO8, image_mat).toImageMsg();
+            img_msg->header.stamp = rosTimeFromSec(gnss_common::gtimeToDouble(img.time));
+            bag.write(*img_msg, topic_name, img_msg->header.stamp);
         }
     }
 

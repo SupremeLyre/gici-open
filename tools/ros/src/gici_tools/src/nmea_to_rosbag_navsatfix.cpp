@@ -8,8 +8,9 @@
  **/
 #include "gici/gnss/gnss_common.h"
 #include "gici/ros_utility/nmea_formator.h"
-#include <rosbag/bag.h>
-#include <sensor_msgs/NavSatFix.h>
+#include "gici/ros_utility/ros_types.h"
+#include <rosbag2_cpp/writer.hpp>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
 
 using namespace gici;
 
@@ -32,8 +33,8 @@ int main(int argc, char **argv)
 
     char buf[1034];
     sprintf(buf, "%s.bag", nmea_buf);
-    rosbag::Bag bag;
-    bag.open(buf, rosbag::bagmode::Write);
+    rosbag2_cpp::Writer bag;
+    bag.open(buf);
 
     // Write rosbag
     for (int i = 0; i < epochs.size(); i++)
@@ -43,15 +44,14 @@ int main(int argc, char **argv)
         if (epoch.sol.stat == SOLQ_NONE)
             continue;
 
-        sensor_msgs::NavSatFix msg;
-        msg.header.seq = i + 1;
-        msg.header.stamp = ros::Time(gnss_common::gtimeToDouble(gpst2utc(epoch.sol.time)));
+        sensor_msgs::msg::NavSatFix msg;
+        msg.header.stamp = rosTimeFromSec(gnss_common::gtimeToDouble(gpst2utc(epoch.sol.time)));
         double lla[3];
         ecef2pos(epoch.sol.rr, lla);
         msg.latitude = lla[0] * R2D;
         msg.longitude = lla[1] * R2D;
         msg.altitude = lla[2];
-        msg.position_covariance_type = sensor_msgs::NavSatFix::COVARIANCE_TYPE_KNOWN;
+        msg.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_KNOWN;
         for (size_t j = 0; j < 9; j++)
         {
             msg.position_covariance[j] = 0.0;
@@ -60,17 +60,19 @@ int main(int argc, char **argv)
         msg.position_covariance[0 + 0 * 3] = square(epoch.esd.std_pos[1]);
         msg.position_covariance[1 + 1 * 3] = square(epoch.esd.std_pos[0]);
         msg.position_covariance[2 + 2 * 3] = square(epoch.esd.std_pos[2]);
-        msg.status.service = sensor_msgs::NavSatStatus::SERVICE_GPS | sensor_msgs::NavSatStatus::SERVICE_GLONASS |
-                             sensor_msgs::NavSatStatus::SERVICE_GALILEO | sensor_msgs::NavSatStatus::SERVICE_COMPASS;
+        msg.status.service = sensor_msgs::msg::NavSatStatus::SERVICE_GPS |
+                             sensor_msgs::msg::NavSatStatus::SERVICE_GLONASS |
+                             sensor_msgs::msg::NavSatStatus::SERVICE_GALILEO |
+                             sensor_msgs::msg::NavSatStatus::SERVICE_COMPASS;
         if (epoch.sol.stat == SOLQ_FIX)
         {
-            msg.status.status = sensor_msgs::NavSatStatus::STATUS_FIX;
+            msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_FIX;
         }
         else
         {
-            msg.status.status = sensor_msgs::NavSatStatus::STATUS_NO_FIX;
+            msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_NO_FIX;
         }
-        bag.write(topic_name, msg.header.stamp, msg);
+        bag.write(msg, topic_name, msg.header.stamp);
     }
 
     bag.close();

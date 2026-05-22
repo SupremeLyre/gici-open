@@ -37,24 +37,26 @@ Eigen::Quaternion<double> eulerAngleToQuaternion(const Eigen::Vector3d rpy)
 int main(int argc, char **argv)
 {
     // Initialize ROS
-    ros::init(argc, argv, "gici");
-    ros::NodeHandle nh("~");
+    std::vector<std::string> arguments = rclcpp::init_and_remove_ros_arguments(argc, argv);
+    auto node = RosNode::make_shared("gici");
 
     // Get file
-    if (argc != 4)
+    if (arguments.size() != 4)
     {
         std::cerr << "Invalid input variables! Supported variables are: "
                   << "<path-to-executable> <path-to-file> <topic-name> <time-duration>" << std::endl;
+        rclcpp::shutdown();
         return -1;
     }
-    std::string file_path = argv[1];
-    std::string topic_name = argv[2];
-    double duration = atof(argv[3]);
+    std::string file_path = arguments[1];
+    std::string topic_name = arguments[2];
+    double duration = atof(arguments[3].data());
 
-    ros::Publisher path_pub = nh.advertise<nav_msgs::Path>("/" + topic_name + "/path", 10);
-    ros::Publisher pose_pub = nh.advertise<nav_msgs::Odometry>("/" + topic_name + "/pose", 3);
+    RosPublisher path_pub(node->create_publisher<nav_msgs::msg::Path>("/" + topic_name + "/path", rclcpp::QoS(10)));
+    RosPublisher pose_pub(node->create_publisher<nav_msgs::msg::Odometry>("/" + topic_name + "/pose", rclcpp::QoS(3)));
 
-    std::unique_ptr<tf::TransformBroadcaster> tranform_broadcaster_ = std::make_unique<tf::TransformBroadcaster>();
+    std::unique_ptr<RosTransformBroadcaster> tranform_broadcaster_ =
+        std::make_unique<RosTransformBroadcaster>(node);
     std::unique_ptr<PathPublisher> path_publisher_ = std::make_unique<PathPublisher>();
 
     char buf[1024];
@@ -65,8 +67,8 @@ int main(int argc, char **argv)
     int num_gga = 0;
     bool has_esa = false;
     Eigen::Vector3d ref_ecef = Eigen::Vector3d::Zero();
-    ros::Rate r(1.0 / duration);
-    while (ros::ok() && !(fgets(buf, 1024 * sizeof(char), fp_nmea) == NULL))
+    rclcpp::Rate r(1.0 / duration);
+    while (rclcpp::ok() && !(fgets(buf, 1024 * sizeof(char), fp_nmea) == NULL))
     {
         std::vector<std::string> strs;
         strs.push_back("");
@@ -120,9 +122,9 @@ int main(int argc, char **argv)
 
                     Transformation T_WS(p_enu, q.normalized());
 
-                    path_publisher_->addPoseAndPublish(path_pub, T_WS, ros::Time(time), "World");
+                    path_publisher_->addPoseAndPublish(path_pub, T_WS, rosTimeFromSec(time), "World");
                     publishOdometry(pose_pub, *tranform_broadcaster_, T_WS, Eigen::Vector3d::Zero(),
-                                    Eigen::Matrix<double, 9, 9>::Zero(), ros::Time(time), "World", "Body");
+                                    Eigen::Matrix<double, 9, 9>::Zero(), rosTimeFromSec(time), "World", "Body");
 
                     r.sleep();
                 }
@@ -130,12 +132,14 @@ int main(int argc, char **argv)
             else
             {
                 std::cerr << "Error: Cannot find GNESA message!" << std::endl;
+                rclcpp::shutdown();
                 return -1;
             }
         }
     }
 
     fclose(fp_nmea);
+    rclcpp::shutdown();
 
     return 0;
 }

@@ -8,22 +8,17 @@
  **/
 #pragma once
 
-#include <boost/shared_ptr.hpp>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
-#include <image_transport/image_transport.h>
 #include <iostream>
-#include <nav_msgs/Odometry.h>
-#include <nav_msgs/Path.h>
-#include <pcl/point_types.h>
-#include <pcl_ros/point_cloud.h>
-#include <ros/ros.h>
-#include <sensor_msgs/CameraInfo.h>
-#include <sensor_msgs/Image.h>
-#include <std_msgs/ColorRGBA.h>
-#include <tf/transform_broadcaster.h>
-#include <visualization_msgs/Marker.h>
-#include <visualization_msgs/MarkerArray.h>
+#include <string>
 
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <std_msgs/msg/header.hpp>
+#include <visualization_msgs/msg/marker.hpp>
+
+#include "gici/ros_utility/ros_types.h"
 #include "gici/stream/formator.h"
 #include "gici/utility/svo.h"
 
@@ -31,44 +26,44 @@ namespace gici
 {
 
 // Publish raw image
-void publishImage(ros::Publisher &pub, const cv::Mat &image, const ros::Time time);
-void publishImage(ros::Publisher &pub, const FramePtr &frame, const ros::Time time, const std::string &encoding);
+void publishImage(RosPublisher &pub, const cv::Mat &image, const RosTime time);
+void publishImage(RosPublisher &pub, const FramePtr &frame, const RosTime time, const std::string &encoding);
 
 // Publish image with features
-void publishFeaturedImage(ros::Publisher &pub, const FramePtr &frame, const ros::Time time);
+void publishFeaturedImage(RosPublisher &pub, const FramePtr &frame, const RosTime time);
 
 // Publish landmarks
-void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time time, std::string frame_id,
+void publishLandmarks(RosPublisher &pub, const MapPtr &map, const RosTime time, std::string frame_id,
                       double marker_scale = 0.1);
 
 // Publish pose
-void publishPoseStamped(ros::Publisher &pub, const Transformation &pose, const ros::Time time, std::string frame_id);
+void publishPoseStamped(RosPublisher &pub, const Transformation &pose, const RosTime time, std::string frame_id);
 
 // Publish pose with covariance
-void publishPoseWithCovarianceStamped(ros::Publisher &pub, const Transformation &pose,
-                                      const Eigen::Matrix<double, 6, 6> &covariance, const ros::Time time,
+void publishPoseWithCovarianceStamped(RosPublisher &pub, const Transformation &pose,
+                                      const Eigen::Matrix<double, 6, 6> &covariance, const RosTime time,
                                       std::string frame_id);
 
 // Publish pose with transform
-void publishPoseWithTransform(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster, const Transformation &pose,
-                              const ros::Time time, std::string frame_id, std::string child_frame_id);
+void publishPoseWithTransform(RosPublisher &pub, RosTransformBroadcaster &broadcaster, const Transformation &pose,
+                              const RosTime time, std::string frame_id, std::string child_frame_id);
 
 // Publish pose with covariance and transform
-void publishPoseWithCovarianceAndTransform(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster,
+void publishPoseWithCovarianceAndTransform(RosPublisher &pub, RosTransformBroadcaster &broadcaster,
                                            const Transformation &pose, const Eigen::Matrix<double, 6, 6> &covariance,
-                                           const ros::Time time, std::string frame_id, std::string child_frame_id);
+                                           const RosTime time, std::string frame_id, std::string child_frame_id);
 
 // Publish odometry
-void publishOdometry(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster, const Transformation &pose,
+void publishOdometry(RosPublisher &pub, RosTransformBroadcaster &broadcaster, const Transformation &pose,
                      const Eigen::Vector3d &velocity, const Eigen::Matrix<double, 9, 9> &covariance,
-                     const ros::Time time, std::string frame_id, std::string child_frame_id);
+                     const RosTime time, std::string frame_id, std::string child_frame_id);
 
 // Path publisher
 class PathPublisher
 {
   public:
     // Add a pose and publish all previous poses
-    void addPoseAndPublish(ros::Publisher &pub, const Transformation &pose, const ros::Time time, std::string frame_id);
+    void addPoseAndPublish(RosPublisher &pub, const Transformation &pose, const RosTime time, std::string frame_id);
 
     // Clear previous poses
     inline void clear()
@@ -79,14 +74,14 @@ class PathPublisher
 
   protected:
     bool is_initialized_ = false;
-    nav_msgs::Path path_;
+    nav_msgs::msg::Path path_;
 };
 
 // Publish 3D error
-void publishError3d(ros::Publisher &pub, const Eigen::Vector3d &error, const ros::Time time, std::string frame_id);
+void publishError3d(RosPublisher &pub, const Eigen::Vector3d &error, const RosTime time, std::string frame_id);
 
 // Publish IMU message
-void publishImu(ros::Publisher &pub, const DataCluster::IMU &imu);
-void publishImu(ros::Publisher &pub, const ImuMeasurement &imu);
+void publishImu(RosPublisher &pub, const DataCluster::IMU &imu);
+void publishImu(RosPublisher &pub, const ImuMeasurement &imu);
 
 } // namespace gici

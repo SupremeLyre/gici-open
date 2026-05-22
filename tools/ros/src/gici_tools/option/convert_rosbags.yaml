@@ -17,6 +17,11 @@ stream:
       type: file
       path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_ephemeris.bin
   - streamer:
+      tag: str_gnss_ssr
+      output_tags: [fmt_gnss_ssr]
+      type: file
+      path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_ssr.bin
+  - streamer:
       tag: str_imu
       output_tags: [fmt_imu]
       type: file
@@ -46,6 +51,11 @@ stream:
       start_time: 2023.05.21
   - formator:
       io: input
+      tag: fmt_gnss_ssr
+      type: gnss-rtcm-3
+      start_time: 2023.05.21
+  - formator:
+      io: input
       tag: fmt_imu
       type: imu-pack
   - formator:
@@ -60,7 +70,7 @@ rosbags:
     tag: rosbag_gnss_rov
     type: rosbag
     input_tags: [fmt_gnss_rov]
-    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_rover.bag
+    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gici_all.bag
     topic_name: /gici/gnss_rover
     format: gnss_raw
     enable_observation: true
@@ -68,7 +78,7 @@ rosbags:
     tag: rosbag_gnss_ref
     type: rosbag
     input_tags: [fmt_gnss_ref]
-    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_reference.bag
+    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gici_all.bag
     topic_name: /gici/gnss_reference
     format: gnss_raw
     enable_observation: true
@@ -77,22 +87,32 @@ rosbags:
     tag: rosbag_gnss_eph
     type: rosbag
     input_tags: [fmt_gnss_eph]
-    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gnss_ephemeris.bag
+    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gici_all.bag
     topic_name: /gici/gnss_ephemeris
     format: gnss_raw
     enable_ephemeris: true
     enable_ionosphere_parameter: true
+- rosbag:
+    tag: rosbag_gnss_ssr
+    type: rosbag
+    input_tags: [fmt_gnss_ssr]
+    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gici_all.bag
+    topic_name: /gici/gnss_ssr
+    format: gnss_raw
+    enable_ssr_code_bias: true
+    enable_ssr_phase_bias: true
+    enable_ssr_ephemeris: true
 - rosbag: 
     tag: rosbag_imu
     type: rosbag
     input_tags: [fmt_imu]
-    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/imu.bag
+    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gici_all.bag
     topic_name: /gici/imu_raw
     format: imu
 - rosbag: 
     tag: rosbag_camera
     type: rosbag
     input_tags: [fmt_camera]
-    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/image.bag
+    path: /mnt/nvme1/datasets/gici_open_dataset/5.2/gici_all.bag
     topic_name: /gici/image_raw
     format: image

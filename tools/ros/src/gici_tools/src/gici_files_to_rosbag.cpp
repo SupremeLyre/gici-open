@@ -8,21 +8,16 @@
  **/
 #include "gici/gnss/gnss_common.h"
 #include "gici/ros_utility/edit_timestamp_utility.h"
+#include "gici/ros_utility/ros_types.h"
 #include "gici/stream/streamer.h"
 #include "gici/utility/node_option_handle.h"
-#include <cv_bridge/cv_bridge.h>
-#include <gici_ros/GlonassEphemeris.h>
-#include <gici_ros/GnssAntennaPosition.h>
-#include <gici_ros/GnssEphemerides.h>
-#include <gici_ros/GnssIonosphereParameter.h>
-#include <gici_ros/GnssObservations.h>
-#include <gici_ros/GnssSsrCodeBiases.h>
-#include <gici_ros/GnssSsrEphemerides.h>
-#include <gici_ros/GnssSsrPhaseBiases.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
-#include <rosbag/bag.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/Imu.h>
+#include <rosbag2_cpp/writer.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/header.hpp>
 
 using namespace gici;
 
@@ -44,34 +39,34 @@ struct RosbagOption
 };
 
 // Write DataCluster to rosbag
-void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &bag, RosbagOption &option, int sequence,
+void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag2_cpp::Writer &bag, RosbagOption &option,
+                 int sequence,
                  double time_tag)
 {
+    (void)sequence;
     if (option.format == "image")
     {
         CHECK(data_cluster->image);
         auto &img = *data_cluster->image;
         cv::Mat image_mat(img.height, img.width, CV_8UC(img.step), img.image);
-        sensor_msgs::ImagePtr img_msg =
-            cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::MONO8, image_mat).toImageMsg();
-        img_msg->header.seq = sequence;
-        img_msg->header.stamp = ros::Time(img.time);
-        bag.write(option.topic_name, ros::Time(time_tag), *img_msg);
+        sensor_msgs::msg::Image::SharedPtr img_msg =
+            cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::MONO8, image_mat).toImageMsg();
+        img_msg->header.stamp = rosTimeFromSec(img.time);
+        bag.write(*img_msg, option.topic_name, rosTimeFromSec(time_tag));
     }
     if (option.format == "imu")
     {
         CHECK(data_cluster->imu);
         auto &imu = *data_cluster->imu;
-        sensor_msgs::Imu msg;
-        msg.header.seq = sequence;
-        msg.header.stamp = ros::Time(imu.time);
+        sensor_msgs::msg::Imu msg;
+        msg.header.stamp = rosTimeFromSec(imu.time);
         msg.angular_velocity.x = imu.angular_velocity[0];
         msg.angular_velocity.y = imu.angular_velocity[1];
         msg.angular_velocity.z = imu.angular_velocity[2];
         msg.linear_acceleration.x = imu.acceleration[0];
         msg.linear_acceleration.y = imu.acceleration[1];
         msg.linear_acceleration.z = imu.acceleration[2];
-        bag.write(option.topic_name, ros::Time(time_tag), msg);
+        bag.write(msg, option.topic_name, rosTimeFromSec(time_tag));
     }
     if (option.format == "gnss_raw")
     {
@@ -98,24 +93,26 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                 {
                     if (obs->code[j] == CODE_NONE)
                         continue;
-                    o.SNR.push_back(obs->SNR[j]);
-                    o.LLI.push_back(obs->LLI[j]);
+                    o.snr.push_back(obs->SNR[j]);
+                    o.lli.push_back(obs->LLI[j]);
                     o.code.push_back(gnss_common::codeTypeToRinexType(o.prn[0], obs->code[j]));
-                    o.L.push_back(obs->L[j]);
-                    o.P.push_back(obs->P[j]);
-                    o.D.push_back(obs->D[j]);
+                    o.l.push_back(obs->L[j]);
+                    o.p.push_back(obs->P[j]);
+                    o.d.push_back(obs->D[j]);
                 }
                 msg.observations.push_back(o);
             }
-            msg.header.stamp = ros::Time(time_tag);
+            msg.header.stamp = rosTimeFromSec(time_tag);
             std::string topic_name = option.topic_name + "/observations";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            bag.write(msg, topic_name, rosTimeFromSec(time_tag));
         }
         if (option.enable_ephemeris && HAS(GnssDataType::Ephemeris))
         {
             gici_ros::GnssEphemerides msg;
             nav_t *nav = gnss.ephemeris;
-            for (int i = 0; i < MAXSAT; i++)
+            if (!nav)
+                return;
+            for (int i = 0; nav->eph && i < nav->n; i++)
             {
                 eph_t *eph = nav->eph + i;
                 if (eph->sat == 0)
@@ -135,7 +132,7 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                     e.toes = time2gpst(eph->toe, NULL);
                     e.toc = time2gpst(eph->toc, NULL);
                 }
-                e.A = eph->A;
+                e.a = eph->A;
                 e.sva = eph->sva;
                 e.code = eph->code;
                 e.idot = eph->idot;
@@ -146,18 +143,18 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                 e.iodc = eph->iodc;
                 e.crs = eph->crs;
                 e.deln = eph->deln;
-                e.M0 = eph->M0;
+                e.m0 = eph->M0;
                 e.cuc = eph->cuc;
                 e.e = eph->e;
                 e.cus = eph->cus;
                 e.toes = eph->toes;
                 e.cic = eph->cic;
-                e.OMG0 = eph->OMG0;
+                e.omg0 = eph->OMG0;
                 e.cis = eph->cis;
                 e.i0 = eph->i0;
                 e.crc = eph->crc;
                 e.omg = eph->omg;
-                e.OMGd = eph->OMGd;
+                e.omgd = eph->OMGd;
                 for (int j = 0; j < 6; j++)
                 {
                     if (eph->tgd[j] != 0.0)
@@ -168,7 +165,7 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                 e.svh = eph->svh;
                 msg.ephemerides.push_back(e);
             }
-            for (int i = 0; i < MAXPRNGLO; i++)
+            for (int i = 0; nav->geph && i < nav->ng; i++)
             {
                 geph_t *geph = nav->geph + i;
                 if (geph->sat == 0)
@@ -196,9 +193,9 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                 e.age = geph->age;
                 msg.glonass_ephemerides.push_back(e);
             }
-            msg.header.stamp = ros::Time(time_tag);
+            msg.header.stamp = rosTimeFromSec(time_tag);
             std::string topic_name = option.topic_name + "/ephemerides";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            bag.write(msg, topic_name, rosTimeFromSec(time_tag));
         }
         if (option.enable_antenna_position && HAS(GnssDataType::AntePos))
         {
@@ -207,9 +204,9 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
             {
                 msg.pos.push_back(gnss.antenna->pos[i]);
             }
-            msg.header.stamp = ros::Time(time_tag);
+            msg.header.stamp = rosTimeFromSec(time_tag);
             std::string topic_name = option.topic_name + "/antenna_position";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            bag.write(msg, topic_name, rosTimeFromSec(time_tag));
         }
         if (option.enable_ionosphere_parameter && HAS(GnssDataType::IonAndUtcPara))
         {
@@ -220,9 +217,9 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
             {
                 msg.parameters.push_back(gnss.ephemeris->ion_gps[i]);
             }
-            msg.header.stamp = ros::Time(time_tag);
+            msg.header.stamp = rosTimeFromSec(time_tag);
             std::string topic_name = option.topic_name + "/ionosphere_parameter";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            bag.write(msg, topic_name, rosTimeFromSec(time_tag));
         }
         if (option.enable_ssr_code_bias && HAS(GnssDataType::SSR))
         {
@@ -253,11 +250,12 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                     continue;
                 msg.biases.push_back(b);
             }
-            if (msg.biases.size() == 0)
-                return;
-            msg.header.stamp = ros::Time(time_tag);
-            std::string topic_name = option.topic_name + "/code_bias";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            if (msg.biases.size() > 0)
+            {
+                msg.header.stamp = rosTimeFromSec(time_tag);
+                std::string topic_name = option.topic_name + "/code_bias";
+                bag.write(msg, topic_name, rosTimeFromSec(time_tag));
+            }
         }
         if (option.enable_ssr_phase_bias && HAS(GnssDataType::SSR))
         {
@@ -289,11 +287,12 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                     continue;
                 msg.biases.push_back(b);
             }
-            if (msg.biases.size() == 0)
-                return;
-            msg.header.stamp = ros::Time(time_tag);
-            std::string topic_name = option.topic_name + "/phase_bias";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            if (msg.biases.size() > 0)
+            {
+                msg.header.stamp = rosTimeFromSec(time_tag);
+                std::string topic_name = option.topic_name + "/phase_bias";
+                bag.write(msg, topic_name, rosTimeFromSec(time_tag));
+            }
         }
         if (option.enable_ssr_ephemeris && HAS(GnssDataType::SSR))
         {
@@ -323,11 +322,12 @@ void writeRosbag(const std::shared_ptr<DataCluster> data_cluster, rosbag::Bag &b
                 }
                 msg.corrections.push_back(c);
             }
-            if (msg.corrections.size() == 0)
-                return;
-            msg.header.stamp = ros::Time(time_tag);
-            std::string topic_name = option.topic_name + "/ephemerides_correction";
-            bag.write(topic_name, ros::Time(time_tag), msg);
+            if (msg.corrections.size() > 0)
+            {
+                msg.header.stamp = rosTimeFromSec(time_tag);
+                std::string topic_name = option.topic_name + "/ephemerides_correction";
+                bag.write(msg, topic_name, rosTimeFromSec(time_tag));
+            }
         }
     }
 }
@@ -381,9 +381,11 @@ int main(int argc, char **argv)
     // Initialize files
     std::vector<file_t *> in_files;
     std::vector<std::shared_ptr<FormatorBase>> in_formators;
-    std::vector<std::shared_ptr<rosbag::Bag>> out_files;
+    std::vector<std::shared_ptr<rosbag2_cpp::Writer>> out_files;
     std::vector<int> out_sequences;
     std::vector<RosbagOption> out_options;
+    std::vector<size_t> out_option_to_file_map;
+    std::map<std::string, size_t> out_path_to_file_map;
     std::map<size_t, size_t> in_to_out_map;
     // initialize input files
     for (size_t i = 0; i < nodes->streamers.size(); i++)
@@ -425,7 +427,6 @@ int main(int argc, char **argv)
     // initialize output files
     for (size_t i = 0; i < rosbags.size(); i++)
     {
-        out_files.push_back(std::make_shared<rosbag::Bag>());
         YAML::Node rosbag_node = rosbags[i]->this_node;
         RosbagOption option;
         option_tools::safeGet(rosbag_node, "path", &option.path);
@@ -442,7 +443,14 @@ int main(int argc, char **argv)
             option_tools::safeGet(rosbag_node, "enable_ssr_ephemeris", &option.enable_ssr_ephemeris);
         }
         out_options.push_back(option);
-        out_files[i]->open(option.path, rosbag::bagmode::Write);
+        auto out_file_iter = out_path_to_file_map.find(option.path);
+        if (out_file_iter == out_path_to_file_map.end())
+        {
+            out_files.push_back(std::make_shared<rosbag2_cpp::Writer>());
+            out_files.back()->open(option.path);
+            out_file_iter = out_path_to_file_map.insert(std::make_pair(option.path, out_files.size() - 1)).first;
+        }
+        out_option_to_file_map.push_back(out_file_iter->second);
         out_sequences.push_back(0);
     }
 
@@ -455,7 +463,7 @@ int main(int argc, char **argv)
             continue;
         std::cout << "Converting " << nodes->streamers[i]->tag << "..." << std::endl;
         size_t out_index = in_to_out_map.at(i);
-        rosbag::Bag &out_file = *out_files[out_index];
+        rosbag2_cpp::Writer &out_file = *out_files[out_option_to_file_map[out_index]];
         RosbagOption &out_option = out_options[out_index];
         int &out_sequence = out_sequences[out_index];
         uint8_t *buf;

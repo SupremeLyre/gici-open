@@ -8,21 +8,40 @@
  **/
 #include "gici/ros_utility/ros_publisher.h"
 
-#include <cv_bridge/cv_bridge.h>
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
-#include <geometry_msgs/Vector3Stamped.h>
+#include <cv_bridge/cv_bridge.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <opencv2/opencv.hpp>
-#include <pcl_conversions/pcl_conversions.h>
-#include <ros/package.h>
-#include <sensor_msgs/Imu.h>
-#include <sensor_msgs/image_encodings.h>
-#include <tf/tf.h>
+#include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 
 namespace gici
 {
 
 // Configures
 const double position_scale = 1.0;
+
+static geometry_msgs::msg::TransformStamped makeTransformStamped(const Transformation &pose, const RosTime time,
+                                                                 const std::string &frame_id,
+                                                                 const std::string &child_frame_id)
+{
+    geometry_msgs::msg::TransformStamped transform_msg;
+    const Eigen::Quaterniond &q = pose.getRotation().toImplementation();
+    transform_msg.header.stamp = time;
+    transform_msg.header.frame_id = frame_id;
+    transform_msg.child_frame_id = child_frame_id;
+    transform_msg.transform.translation.x = pose.getPosition().x() * position_scale;
+    transform_msg.transform.translation.y = pose.getPosition().y() * position_scale;
+    transform_msg.transform.translation.z = pose.getPosition().z() * position_scale;
+    transform_msg.transform.rotation.x = q.x();
+    transform_msg.transform.rotation.y = q.y();
+    transform_msg.transform.rotation.z = q.z();
+    transform_msg.transform.rotation.w = q.w();
+    return transform_msg;
+}
 
 // Draw features on image
 static void drawFeatures(const Frame &frame, const bool only_matched_features, cv::Mat *img_rgb)
@@ -86,44 +105,45 @@ static void drawFeatures(const Frame &frame, const bool only_matched_features, c
 }
 
 // Publish image
-void publishImage(ros::Publisher &pub, const cv::Mat &image, const ros::Time time)
+void publishImage(RosPublisher &pub, const cv::Mat &image, const RosTime time)
 {
-    sensor_msgs::ImagePtr img_msg =
-        cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::MONO8, image).toImageMsg();
+    sensor_msgs::msg::Image::SharedPtr img_msg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::MONO8, image).toImageMsg();
     img_msg->header.stamp = time;
     pub.publish(img_msg);
 }
 
 // Publish raw image
-void publishImage(ros::Publisher &pub, const FramePtr &frame, const ros::Time time, const std::string &encoding)
+void publishImage(RosPublisher &pub, const FramePtr &frame, const RosTime time, const std::string &encoding)
 {
-    sensor_msgs::ImagePtr img_msg = cv_bridge::CvImage(std_msgs::Header(), encoding, frame->img_pyr_[0]).toImageMsg();
+    sensor_msgs::msg::Image::SharedPtr img_msg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), encoding, frame->img_pyr_[0]).toImageMsg();
     img_msg->header.stamp = time;
     pub.publish(img_msg);
 }
 
 // Publish image with features
-void publishFeaturedImage(ros::Publisher &pub, const FramePtr &frame, const ros::Time time)
+void publishFeaturedImage(RosPublisher &pub, const FramePtr &frame, const RosTime time)
 {
     cv::Mat img_rgb;
     drawFeatures(*frame, false, &img_rgb);
-    sensor_msgs::ImagePtr img_msg =
-        cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::BGR8, img_rgb).toImageMsg();
+    sensor_msgs::msg::Image::SharedPtr img_msg =
+        cv_bridge::CvImage(std_msgs::msg::Header(), sensor_msgs::image_encodings::BGR8, img_rgb).toImageMsg();
     img_msg->header.stamp = time;
     pub.publish(img_msg);
 }
 
 // Publish landmarks
-void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time time, std::string frame_id,
+void publishLandmarks(RosPublisher &pub, const MapPtr &map, const RosTime time, std::string frame_id,
                       double marker_scale)
 {
     marker_scale *= position_scale;
-    visualization_msgs::Marker m;
+    visualization_msgs::msg::Marker m;
     m.header.frame_id = frame_id;
     m.header.stamp = time;
     m.ns = "landmarks";
     m.id = 0;
-    m.type = visualization_msgs::Marker::SPHERE_LIST;
+    m.type = visualization_msgs::msg::Marker::SPHERE_LIST;
     m.action = 0; // add/modify
     m.scale.x = marker_scale;
     m.scale.y = marker_scale;
@@ -145,7 +165,7 @@ void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time ti
             if (!isSeed(frame->type_vec_[i]))
                 continue;
             Eigen::Vector3d xyz = frame->landmark_vec_[i]->pos();
-            geometry_msgs::Point p;
+            geometry_msgs::msg::Point p;
             p.x = xyz.x() * position_scale;
             p.y = xyz.y() * position_scale;
             p.z = xyz.z() * position_scale;
@@ -156,9 +176,9 @@ void publishLandmarks(ros::Publisher &pub, const MapPtr &map, const ros::Time ti
 }
 
 // Publish pose
-void publishPoseStamped(ros::Publisher &pub, const Transformation &pose, const ros::Time time, std::string frame_id)
+void publishPoseStamped(RosPublisher &pub, const Transformation &pose, const RosTime time, std::string frame_id)
 {
-    geometry_msgs::PoseStamped pose_msg;
+    geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.frame_id = frame_id;
     pose_msg.header.stamp = time;
     pose_msg.pose.position.x = pose.getPosition()[0] * position_scale;
@@ -172,11 +192,11 @@ void publishPoseStamped(ros::Publisher &pub, const Transformation &pose, const r
 }
 
 // Publish pose with covariance
-void publishPoseWithCovarianceStamped(ros::Publisher &pub, const Transformation &pose,
-                                      const Eigen::Matrix<double, 6, 6> &covariance, const ros::Time time,
+void publishPoseWithCovarianceStamped(RosPublisher &pub, const Transformation &pose,
+                                      const Eigen::Matrix<double, 6, 6> &covariance, const RosTime time,
                                       std::string frame_id)
 {
-    geometry_msgs::PoseWithCovarianceStamped pose_msg;
+    geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
     pose_msg.header.frame_id = frame_id;
     pose_msg.header.stamp = time;
     pose_msg.pose.pose.position.x = pose.getPosition()[0] * position_scale;
@@ -197,71 +217,35 @@ void publishPoseWithCovarianceStamped(ros::Publisher &pub, const Transformation 
 }
 
 // Publish pose with transform
-void publishPoseWithTransform(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster, const Transformation &pose,
-                              const ros::Time time, std::string frame_id, std::string child_frame_id)
+void publishPoseWithTransform(RosPublisher &pub, RosTransformBroadcaster &broadcaster, const Transformation &pose,
+                              const RosTime time, std::string frame_id, std::string child_frame_id)
 {
-    // Publish transform
-    tf::Transform transform_msg;
-    auto &T = pose;
-    const Eigen::Quaterniond &q = T.getRotation().toImplementation();
-    transform_msg.setOrigin(tf::Vector3(T.getPosition().x() * position_scale, T.getPosition().y() * position_scale,
-                                        T.getPosition().z() * position_scale));
-    tf::Quaternion tf_q;
-    tf_q.setX(q.x());
-    tf_q.setY(q.y());
-    tf_q.setZ(q.z());
-    tf_q.setW(q.w());
-    transform_msg.setRotation(tf_q);
-    broadcaster.sendTransform(tf::StampedTransform(transform_msg, time, frame_id, child_frame_id));
+    broadcaster.sendTransform(makeTransformStamped(pose, time, frame_id, child_frame_id));
 
     // Publish pose
     publishPoseStamped(pub, pose, time, frame_id);
 }
 
 // Publish pose with covariance and transform
-void publishPoseWithCovarianceAndTransform(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster,
+void publishPoseWithCovarianceAndTransform(RosPublisher &pub, RosTransformBroadcaster &broadcaster,
                                            const Transformation &pose, const Eigen::Matrix<double, 6, 6> &covariance,
-                                           const ros::Time time, std::string frame_id, std::string child_frame_id)
+                                           const RosTime time, std::string frame_id, std::string child_frame_id)
 {
-    // Publish transform
-    tf::Transform transform_msg;
-    auto &T = pose;
-    const Eigen::Quaterniond &q = T.getRotation().toImplementation();
-    transform_msg.setOrigin(tf::Vector3(T.getPosition().x() * position_scale, T.getPosition().y() * position_scale,
-                                        T.getPosition().z() * position_scale));
-    tf::Quaternion tf_q;
-    tf_q.setX(q.x());
-    tf_q.setY(q.y());
-    tf_q.setZ(q.z());
-    tf_q.setW(q.w());
-    transform_msg.setRotation(tf_q);
-    broadcaster.sendTransform(tf::StampedTransform(transform_msg, time, frame_id, child_frame_id));
+    broadcaster.sendTransform(makeTransformStamped(pose, time, frame_id, child_frame_id));
 
     // Publish pose
     publishPoseWithCovarianceStamped(pub, pose, covariance, time, frame_id);
 }
 
 // Publish odometry
-void publishOdometry(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster, const Transformation &pose,
+void publishOdometry(RosPublisher &pub, RosTransformBroadcaster &broadcaster, const Transformation &pose,
                      const Eigen::Vector3d &velocity, const Eigen::Matrix<double, 9, 9> &covariance,
-                     const ros::Time time, std::string frame_id, std::string child_frame_id)
+                     const RosTime time, std::string frame_id, std::string child_frame_id)
 {
-    // Publish transform
-    tf::Transform transform_msg;
-    auto &T = pose;
-    const Eigen::Quaterniond &q = T.getRotation().toImplementation();
-    transform_msg.setOrigin(tf::Vector3(T.getPosition().x() * position_scale, T.getPosition().y() * position_scale,
-                                        T.getPosition().z() * position_scale));
-    tf::Quaternion tf_q;
-    tf_q.setX(q.x());
-    tf_q.setY(q.y());
-    tf_q.setZ(q.z());
-    tf_q.setW(q.w());
-    transform_msg.setRotation(tf_q);
-    broadcaster.sendTransform(tf::StampedTransform(transform_msg, time, frame_id, child_frame_id));
+    broadcaster.sendTransform(makeTransformStamped(pose, time, frame_id, child_frame_id));
 
     // Publish odometry
-    nav_msgs::Odometry odometry_msg;
+    nav_msgs::msg::Odometry odometry_msg;
     odometry_msg.child_frame_id = child_frame_id;
     odometry_msg.header.frame_id = frame_id;
     odometry_msg.header.stamp = time;
@@ -293,7 +277,7 @@ void publishOdometry(ros::Publisher &pub, tf::TransformBroadcaster &broadcaster,
 }
 
 // Path publisher
-void PathPublisher::addPoseAndPublish(ros::Publisher &pub, const Transformation &pose, const ros::Time time,
+void PathPublisher::addPoseAndPublish(RosPublisher &pub, const Transformation &pose, const RosTime time,
                                       std::string frame_id)
 {
     if (!is_initialized_)
@@ -304,10 +288,10 @@ void PathPublisher::addPoseAndPublish(ros::Publisher &pub, const Transformation 
     }
 
     // check timestamp, we force the frequency less than 10 Hz
-    if (path_.poses.size() > 0 && !((time - path_.poses.back().header.stamp).toSec() >= 0.1 - 1e-4))
+    if (path_.poses.size() > 0 && !((time - RosTime(path_.poses.back().header.stamp)).seconds() >= 0.1 - 1e-4))
         return;
 
-    geometry_msgs::PoseStamped pose_msg;
+    geometry_msgs::msg::PoseStamped pose_msg;
     pose_msg.header.frame_id = path_.header.frame_id;
     pose_msg.header.stamp = time;
     pose_msg.pose.position.x = pose.getPosition()[0] * position_scale;
@@ -323,9 +307,9 @@ void PathPublisher::addPoseAndPublish(ros::Publisher &pub, const Transformation 
 }
 
 // Publish 3D error
-void publishError3d(ros::Publisher &pub, const Eigen::Vector3d &error, const ros::Time time, std::string frame_id)
+void publishError3d(RosPublisher &pub, const Eigen::Vector3d &error, const RosTime time, std::string frame_id)
 {
-    geometry_msgs::Vector3Stamped error_msg;
+    geometry_msgs::msg::Vector3Stamped error_msg;
     error_msg.header.frame_id = frame_id;
     error_msg.header.stamp = time;
     error_msg.vector.x = error(0);
@@ -336,10 +320,10 @@ void publishError3d(ros::Publisher &pub, const Eigen::Vector3d &error, const ros
 }
 
 // Publish IMU message
-void publishImu(ros::Publisher &pub, const DataCluster::IMU &imu)
+void publishImu(RosPublisher &pub, const DataCluster::IMU &imu)
 {
-    sensor_msgs::Imu imu_msg;
-    imu_msg.header.stamp = ros::Time(imu.time);
+    sensor_msgs::msg::Imu imu_msg;
+    imu_msg.header.stamp = rosTimeFromSec(imu.time);
     imu_msg.linear_acceleration.x = imu.acceleration[0];
     imu_msg.linear_acceleration.y = imu.acceleration[1];
     imu_msg.linear_acceleration.z = imu.acceleration[2];
@@ -351,10 +335,10 @@ void publishImu(ros::Publisher &pub, const DataCluster::IMU &imu)
 }
 
 // Publish IMU message
-void publishImu(ros::Publisher &pub, const ImuMeasurement &imu)
+void publishImu(RosPublisher &pub, const ImuMeasurement &imu)
 {
-    sensor_msgs::Imu imu_msg;
-    imu_msg.header.stamp = ros::Time(imu.timestamp);
+    sensor_msgs::msg::Imu imu_msg;
+    imu_msg.header.stamp = rosTimeFromSec(imu.timestamp);
     imu_msg.linear_acceleration.x = imu.linear_acceleration[0];
     imu_msg.linear_acceleration.y = imu.linear_acceleration[1];
     imu_msg.linear_acceleration.z = imu.linear_acceleration[2];
