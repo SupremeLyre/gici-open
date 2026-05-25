@@ -14,6 +14,7 @@
 #include "gici/fusion/gnss_imu_camera_srr_estimator.h"
 #include "gici/fusion/gnss_imu_initializer.h"
 #include "gici/fusion/gnss_imu_lc_estimator.h"
+#include "gici/fusion/ppp_imu_camera_rrr_estimator.h"
 #include "gici/fusion/ppp_imu_tc_estimator.h"
 #include "gici/fusion/rtk_imu_camera_rrr_estimator.h"
 #include "gici/fusion/rtk_imu_tc_estimator.h"
@@ -156,6 +157,7 @@ template <> void convert<std::string, EstimatorType>(const std::string &in, Esti
     MAP_IN_OUT("spp_imu_camera_rrr", EstimatorType::SppImuCameraRrr);
     MAP_IN_OUT("dgnss_imu_camera_rrr", EstimatorType::DgnssImuCameraRrr);
     MAP_IN_OUT("rtk_imu_camera_rrr", EstimatorType::RtkImuCameraRrr);
+    MAP_IN_OUT("ppp_imu_camera_rrr", EstimatorType::PppImuCameraRrr);
     MAP_IN_OUT("Ppp_imu_camera_rrr", EstimatorType::PppImuCameraRrr);
     LOG_INVALId;
 }
@@ -852,6 +854,14 @@ void loadOptions<SppImuCameraRrrEstimatorOptions>(YAML::Node &node, SppImuCamera
 
 template <>
 void loadOptions<RtkImuCameraRrrEstimatorOptions>(YAML::Node &node, RtkImuCameraRrrEstimatorOptions &options)
+{
+    LOAD_COMMON(max_keyframes);
+    LOAD_COMMON(max_gnss_window_length_minor);
+    LOAD_COMMON(min_yaw_std_init_visual);
+}
+
+template <>
+void loadOptions<PppImuCameraRrrEstimatorOptions>(YAML::Node &node, PppImuCameraRrrEstimatorOptions &options)
 {
     LOAD_COMMON(max_keyframes);
     LOAD_COMMON(max_gnss_window_length_minor);

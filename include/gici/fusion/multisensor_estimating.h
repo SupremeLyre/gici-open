@@ -18,6 +18,7 @@
 #include "gici/estimate/estimating.h"
 #include "gici/fusion/gnss_imu_camera_srr_estimator.h"
 #include "gici/fusion/gnss_imu_lc_estimator.h"
+#include "gici/fusion/ppp_imu_camera_rrr_estimator.h"
 #include "gici/fusion/ppp_imu_tc_estimator.h"
 #include "gici/fusion/rtk_imu_camera_rrr_estimator.h"
 #include "gici/fusion/rtk_imu_tc_estimator.h"
@@ -220,6 +221,7 @@ class MultiSensorEstimating : public EstimatingBase
     GnssImuCameraSrrEstimatorOptions gnss_imu_camera_srr_options_;
     SppImuCameraRrrEstimatorOptions spp_imu_camera_rrr_options_;
     RtkImuCameraRrrEstimatorOptions rtk_imu_camera_rrr_options_;
+    PppImuCameraRrrEstimatorOptions ppp_imu_camera_rrr_options_;
 
     // Solutions
     bool backend_firstly_updated_ = false;

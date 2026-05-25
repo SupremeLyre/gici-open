@@ -1,63 +1,88 @@
 /**
- * @Function: RTK/IMU/Camera tightly couple estimator (GNSS raw (RTK formula) + IMU raw + camera raw)
+ * @Function: PPP/IMU/Camera tightly couple estimator (GNSS raw (PPP formula) + IMU raw + camera raw)
  *
  * @Author  : Cheng Chi
  * @Email   : chichengcn@sjtu.edu.cn
  *
  * Copyright (C) 2023 by Cheng Chi, All rights reserved.
  **/
-#include "gici/fusion/rtk_imu_camera_rrr_estimator.h"
+#include "gici/fusion/ppp_imu_camera_rrr_estimator.h"
 
+#include "gici/gnss/gnss_common.h"
 #include "gici/gnss/position_error.h"
 
 namespace gici
 {
 
 // The default constructor
-RtkImuCameraRrrEstimator::RtkImuCameraRrrEstimator(
-    const RtkImuCameraRrrEstimatorOptions &options, const GnssImuInitializerOptions &init_options,
-    const RtkEstimatorOptions rtk_options, const GnssEstimatorBaseOptions &gnss_base_options,
+PppImuCameraRrrEstimator::PppImuCameraRrrEstimator(
+    const PppImuCameraRrrEstimatorOptions &options, const GnssImuInitializerOptions &init_options,
+    const PppEstimatorOptions ppp_options, const GnssEstimatorBaseOptions &gnss_base_options,
     const GnssLooseEstimatorBaseOptions &gnss_loose_base_options, const VisualEstimatorBaseOptions &visual_base_options,
     const ImuEstimatorBaseOptions &imu_base_options, const EstimatorBaseOptions &base_options,
     const AmbiguityResolutionOptions &ambiguity_options)
-    : rrr_options_(options), rtk_options_(rtk_options), GnssEstimatorBase(gnss_base_options, base_options),
+    : rrr_options_(options), ppp_options_(ppp_options), GnssEstimatorBase(gnss_base_options, base_options),
       VisualEstimatorBase(visual_base_options, base_options), ImuEstimatorBase(imu_base_options, base_options),
       EstimatorBase(base_options)
 {
-    type_ = EstimatorType::RtkImuCameraRrr;
+    type_ = EstimatorType::PppImuCameraRrr;
+    is_verbose_model_ = true;
+    is_ppp_ = true;
     is_use_phase_ = true;
     states_.push_back(State());
-    gnss_measurement_pairs_.push_back(std::make_pair(GnssMeasurement(), GnssMeasurement()));
+    gnss_measurements_.push_back(GnssMeasurement());
+    ionosphere_states_.push_back(IonosphereState());
+    ambiguity_states_.push_back(AmbiguityState());
     frame_bundles_.push_back(nullptr);
     num_satellites_ = 0;
 
-    // Initialization control
-    initializer_sub_estimator_.reset(new RtkEstimator(rtk_options, gnss_base_options, base_options, ambiguity_options));
-    gnss_imu_initializer_.reset(new GnssImuInitializer(init_options, gnss_loose_base_options, imu_base_options,
-                                                       base_options, graph_, initializer_sub_estimator_));
+    // SPP estimator for setting initial states.
+    SppEstimatorOptions spp_options;
+    spp_options.use_dual_frequency = true;
+    spp_options.estimate_velocity = true;
+    spp_estimator_.reset(new SppEstimator(spp_options, gnss_base_options));
+    spp_estimator_->setPPPMode();
+
+    // Phase wind-up control
+    phase_windup_.reset(new PhaseWindup());
 
     // Ambiguity resolution
     ambiguity_resolution_.reset(new AmbiguityResolution(ambiguity_options, graph_));
 
-    // RTK estimator used for ambiguity covariance estimation
-    RtkEstimatorOptions sub_rtk_options = rtk_options;
-    EstimatorBaseOptions sub_base_options = base_options;
-    GnssEstimatorBaseOptions sub_gnss_base_options = gnss_base_options;
-    sub_rtk_options.use_ambiguity_resolution = false;
-    sub_rtk_options.max_window_length = 2;
-    sub_base_options.verbose_output = false;
-    sub_gnss_base_options.use_outlier_rejection = false;
-    ambiguity_covariance_estimator_.reset(
-        new RtkEstimator(sub_rtk_options, sub_gnss_base_options, sub_base_options, ambiguity_options));
+    // Initialization control
+    EstimatorBaseOptions initializer_base_options = base_options;
+    initializer_base_options.verbose_output = false;
+    initializer_sub_estimator_.reset(
+        new PppEstimator(ppp_options, gnss_base_options, initializer_base_options, ambiguity_options));
+    gnss_imu_initializer_.reset(new GnssImuInitializer(init_options, gnss_loose_base_options, imu_base_options,
+                                                       base_options, graph_, initializer_sub_estimator_));
+
+    // Open intermediate data logging files
+    if (base_options_.log_intermediate_data)
+    {
+        const std::string &directory = base_options_.log_intermediate_data_directory;
+        createAmbiguityLogger(directory);
+        createIonosphereLogger(directory);
+        createPseudorangeResidualLogger(directory);
+        createPhaserangeResidualLogger(directory);
+    }
 }
 
 // The default destructor
-RtkImuCameraRrrEstimator::~RtkImuCameraRrrEstimator()
+PppImuCameraRrrEstimator::~PppImuCameraRrrEstimator()
 {
+    // Close intermediate data logging files
+    if (base_options_.log_intermediate_data)
+    {
+        freeAmbiguityLogger();
+        freeIonosphereLogger();
+        freePseudorangeResidualLogger();
+        freePhaserangeResidualLogger();
+    }
 }
 
 // Add measurement
-bool RtkImuCameraRrrEstimator::addMeasurement(const EstimatorDataCluster &measurement)
+bool PppImuCameraRrrEstimator::addMeasurement(const EstimatorDataCluster &measurement)
 {
     // GNSS/IMU initialization
     if (coordinate_ == nullptr || !gravity_setted_)
@@ -86,25 +111,9 @@ bool RtkImuCameraRrrEstimator::addMeasurement(const EstimatorDataCluster &measur
     }
 
     // Add GNSS
-    if (measurement.gnss)
+    if (measurement.gnss && measurement.gnss_role == GnssRole::Rover)
     {
-        // feed to covariance estimator
-        if (!ambiguity_covariance_coordinate_setted_ && coordinate_)
-        {
-            ambiguity_covariance_estimator_->setCoordinate(coordinate_);
-            ambiguity_covariance_coordinate_setted_ = true;
-        }
-        if (coordinate_ && ambiguity_covariance_estimator_->addMeasurement(measurement))
-        {
-            ambiguity_covariance_estimator_->estimate();
-        }
-        // feed to local
-        GnssMeasurement rov, ref;
-        meausrement_align_.add(measurement);
-        if (meausrement_align_.get(rtk_options_.max_age, rov, ref))
-        {
-            return addGnssMeasurementAndState(rov, ref);
-        }
+        return addGnssMeasurementAndState(*measurement.gnss);
     }
 
     // Add images
@@ -119,56 +128,80 @@ bool RtkImuCameraRrrEstimator::addMeasurement(const EstimatorDataCluster &measur
 }
 
 // Add GNSS measurements and state
-bool RtkImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement &measurement_rov,
-                                                          const GnssMeasurement &measurement_ref)
+bool PppImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement &measurement)
 {
     // Get prior states
-    Eigen::Vector3d position_prior = coordinate_->convert(getPoseEstimate().getPosition(), GeoType::ENU, GeoType::ECEF);
+    if (!spp_estimator_->addGnssMeasurementAndState(measurement))
+    {
+        return false;
+    }
+    if (!spp_estimator_->estimate())
+    {
+        return false;
+    }
+    Eigen::Vector3d position_prior = spp_estimator_->getPositionEstimate();
+    std::map<char, double> clock_prior = spp_estimator_->getClockEstimate();
+    std::map<char, double> frequency_prior = spp_estimator_->getFrequencyEstimate();
 
     // Set to local measurement handle
-    curGnssRov() = measurement_rov;
-    curGnssRov().position = position_prior;
-    curGnssRef() = measurement_ref;
+    curGnss() = measurement;
+    curGnss().position = position_prior;
+    curGnss().phase_windup = phase_windup_;
+    const bool has_last_gnss = gnss_measurements_.size() > 1 && !lastGnss().satellites.empty();
 
     // Erase duplicated phases, arrange to one observation per phase
-    gnss_common::rearrangePhasesAndCodes(curGnssRov());
-    gnss_common::rearrangePhasesAndCodes(curGnssRef());
+    gnss_common::rearrangePhasesAndCodes(curGnss(), true);
 
-    // Form double difference pair
-    std::map<char, std::string> system_to_base_prn;
-    GnssMeasurementDDIndexPairs phase_index_pairs =
-        gnss_common::formPhaserangeDDPair(curGnssRov(), curGnssRef(), system_to_base_prn, gnss_base_options_.common);
-    GnssMeasurementDDIndexPairs code_index_pairs =
-        gnss_common::formPseudorangeDDPair(curGnssRov(), curGnssRef(), system_to_base_prn, gnss_base_options_.common);
+    // Correct code bias
+    correctCodeBias(curGnss(), false);
+
+    // Correct phase bias
+    if (curGnss().phase_bias->valid())
+        correctPhaseBias(curGnss());
+
+    // Correct BDS satellite multipath
+    correctBdsSatelliteMultipath(curGnss());
+
+    // Compute ionosphere delays
+    computeIonosphereDelay(curGnss());
 
     // Cycle-slip detection
-    if (!isFirstEpoch())
+    if (has_last_gnss)
     {
-        cycleSlipDetectionSD(lastGnssRov(), lastGnssRef(), curGnssRov(), curGnssRef(), gnss_base_options_.common);
+        cycleSlipDetection(lastGnss(), curGnss(), gnss_base_options_.common);
     }
 
     // Add parameter blocks
-    double timestamp = curGnssRov().timestamp;
+    double timestamp = curGnss().timestamp;
     // pose and speed and bias block
-    const int32_t bundle_id = curGnssRov().id;
+    const int32_t bundle_id = curGnss().id;
     BackendId pose_id = createGnssPoseId(bundle_id);
     size_t index = insertImuState(timestamp, pose_id);
     states_[index].status = GnssSolutionStatus::Single;
     latest_state_index_ = index;
     // GNSS extrinsics, it should be added at initialization step
     CHECK(gnss_extrinsics_id_.valid());
+    // clock block
+    int num_valid_system = 0;
+    addClockParameterBlocks(curGnss(), curGnss().id, num_valid_system, clock_prior);
+    // troposphere block
+    addTroposphereParameterBlock(curGnss().id);
+    // ionosphere blocks
+    addIonosphereParameterBlocks(curGnss(), curGnss().id, curIonosphereState());
     // ambiguity blocks
-    addSdAmbiguityParameterBlocks(curGnssRov(), curGnssRef(), phase_index_pairs, curGnssRov().id, curAmbiguityState());
+    addAmbiguityParameterBlocks(curGnss(), curGnss().id, curAmbiguityState());
+    // inter-frequency bias (IFB) blocks
+    addIfbParameterBlocks(curGnss(), curGnss().id);
     // frequency block
     int num_valid_doppler_system = 0;
-    addFrequencyParameterBlocks(curGnssRov(), curGnssRov().id, num_valid_doppler_system);
+    addFrequencyParameterBlocks(curGnss(), curGnss().id, num_valid_doppler_system, frequency_prior);
 
     // Add pseudorange residual blocks
     int num_valid_satellite = 0;
-    addDdPseudorangeResidualBlocks(curGnssRov(), curGnssRef(), code_index_pairs, states_[index], num_valid_satellite);
+    addPseudorangeResidualBlocks(curGnss(), curState(), num_valid_satellite);
 
     // We do not need to check if the number of satellites is sufficient in tightly fusion.
-    if (!checkSufficientSatellite(num_valid_satellite, 0))
+    if (!checkSufficientSatellite(num_valid_satellite, num_valid_system))
     {
         // do nothing
     }
@@ -178,30 +211,37 @@ bool RtkImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement 
     if (num_satellites_ == 0)
     {
         // erase parameters in current state
-        eraseFrequencyParameterBlocks(states_[index]);
+        eraseClockParameterBlocks(states_[index]);
+        eraseTroposphereParameterBlock(states_[index]);
+        eraseIonosphereParameterBlocks(curIonosphereState());
         eraseAmbiguityParameterBlocks(curAmbiguityState());
+        eraseFrequencyParameterBlocks(states_[index]);
         eraseImuState(states_[index]);
         return false;
     }
 
     // Add phaserange residual blocks
-    addDdPhaserangeResidualBlocks(curGnssRov(), curGnssRef(), phase_index_pairs, states_[index]);
+    addPhaserangeResidualBlocks(curGnss(), curState());
 
     // Add doppler residual blocks
-    addDopplerResidualBlocks(curGnssRov(), states_[index], num_valid_satellite, false,
+    addDopplerResidualBlocks(curGnss(), curState(), num_valid_satellite, false,
                              getImuMeasurementNear(timestamp).angular_velocity);
 
     // Add relative errors
-    if (lastGnssState().valid())
+    if (has_last_gnss && lastGnssState().valid())
     { // maybe invalid here because of long term GNSS absent
         // frequency
         addRelativeFrequencyResidualBlock(lastGnssState(), states_[index]);
+        // troposphere
+        addRelativeTroposphereResidualBlock(lastGnssState(), states_[index]);
+        // ionosphere
+        addRelativeIonosphereResidualBlock(lastIonosphereState(), curIonosphereState());
         // ambiguity
-        addRelativeAmbiguityResidualBlock(lastGnssRov(), curGnssRov(), lastAmbiguityState(), curAmbiguityState());
+        addRelativeAmbiguityResidualBlock(lastGnss(), curGnss(), lastAmbiguityState(), curAmbiguityState());
     }
 
     // ZUPT
-    addZUPTResidualBlock(states_[index]);
+    addZUPTResidualBlock(curState());
 
     // Car motion
     if (imu_base_options_.car_motion)
@@ -213,13 +253,13 @@ bool RtkImuCameraRrrEstimator::addGnssMeasurementAndState(const GnssMeasurement 
     }
 
     // Compute DOP
-    updateGdop(curGnssRov(), code_index_pairs);
+    updateGdop(curGnss());
 
     return true;
 }
 
 // Add image measurements and state
-bool RtkImuCameraRrrEstimator::addImageMeasurementAndState(const FrameBundlePtr &frame_bundle,
+bool PppImuCameraRrrEstimator::addImageMeasurementAndState(const FrameBundlePtr &frame_bundle,
                                                            const SpeedAndBias &speed_and_bias)
 {
     // If initialized, we are supposed not at the first epoch
@@ -283,7 +323,7 @@ bool RtkImuCameraRrrEstimator::addImageMeasurementAndState(const FrameBundlePtr 
 }
 
 // Visual initialization
-bool RtkImuCameraRrrEstimator::visualInitialization(const FrameBundlePtr &frame_bundle)
+bool PppImuCameraRrrEstimator::visualInitialization(const FrameBundlePtr &frame_bundle)
 {
     // store poses
     do_not_remove_imu_measurements_ = true;
@@ -345,7 +385,7 @@ bool RtkImuCameraRrrEstimator::visualInitialization(const FrameBundlePtr &frame_
 }
 
 // Solve current graph
-bool RtkImuCameraRrrEstimator::estimate()
+bool PppImuCameraRrrEstimator::estimate()
 {
     status_ = EstimatorStatus::Converged;
 
@@ -397,33 +437,36 @@ bool RtkImuCameraRrrEstimator::estimate()
         {
             states_[i].status = GnssSolutionStatus::Float;
         }
-        if (rtk_options_.use_ambiguity_resolution)
+        if (ppp_options_.use_ambiguity_resolution && !curAmbiguityState().ids.empty())
         {
             // get covariance of ambiguities
             Eigen::MatrixXd ambiguity_covariance;
-            if (estimateAmbiguityCovariance(states_[latest_state_index_], ambiguity_covariance))
+            std::vector<uint64_t> parameter_block_ids;
+            for (auto id : curAmbiguityState().ids)
             {
-                // solve
-                AmbiguityResolution::Result ret =
-                    ambiguity_resolution_->solveRtk(states_[latest_state_index_].id, curAmbiguityState().ids,
-                                                    ambiguity_covariance, gnss_measurement_pairs_.back());
-                if (ret == AmbiguityResolution::Result::NlFix)
+                parameter_block_ids.push_back(id.asInteger());
+            }
+            graph_->computeCovariance(parameter_block_ids, ambiguity_covariance);
+            // solve
+            AmbiguityResolution::Result ret =
+                ambiguity_resolution_->solvePpp(states_[latest_state_index_].id, curAmbiguityState().ids,
+                                                ambiguity_covariance, curGnss());
+            if (ret == AmbiguityResolution::Result::NlFix)
+            {
+                for (size_t i = latest_state_index_; i < states_.size(); i++)
                 {
-                    for (size_t i = latest_state_index_; i < states_.size(); i++)
-                    {
-                        states_[i].status = GnssSolutionStatus::Fixed;
-                    }
+                    states_[i].status = GnssSolutionStatus::Fixed;
                 }
             }
         }
 
         // Check if we continuously cannot fix ambiguity, while we have good observations
-        if (rtk_options_.use_ambiguity_resolution)
+        if (ppp_options_.use_ambiguity_resolution)
         {
             const double thr = gnss_base_options_.good_observation_max_reject_ratio;
             if (isGnssGoodObservation() && ratio_pseudorange < thr && ratio_phaserange < thr && ratio_doppler < thr)
             {
-                if (curState().status != GnssSolutionStatus::Fixed)
+                if (states_[latest_state_index_].status != GnssSolutionStatus::Fixed)
                     num_continuous_unfix_++;
                 else
                     num_continuous_unfix_ = 0;
@@ -434,7 +477,6 @@ bool RtkImuCameraRrrEstimator::estimate()
             {
                 LOG(INFO) << "Continuously unfix under good observations. Clear current ambiguities.";
                 resetAmbiguityEstimation();
-                ambiguity_covariance_estimator_->resetAmbiguityEstimation();
                 num_continuous_unfix_ = 0;
             }
         }
@@ -471,7 +513,6 @@ bool RtkImuCameraRrrEstimator::estimate()
     State &new_state = states_[latest_state_index_];
     if (base_options_.verbose_output)
     {
-        int dif_distance = static_cast<int>(round((curGnssRov().position - curGnssRef().position).norm() / 1.0e3));
         LOG(INFO) << estimatorTypeToString(type_) << ": "
                   << "Iterations: " << graph_->summary.iterations.size() << ", " << std::scientific
                   << std::setprecision(3) << "Initial cost: " << graph_->summary.initial_cost << ", "
@@ -487,7 +528,8 @@ bool RtkImuCameraRrrEstimator::estimate()
     // Shift memory for states and measurements
     if (new_state_type == IdType::gPose)
     {
-        gnss_measurement_pairs_.push_back(std::make_pair(GnssMeasurement(), GnssMeasurement()));
+        gnss_measurements_.push_back(GnssMeasurement());
+        ionosphere_states_.push_back(IonosphereState());
         ambiguity_states_.push_back(AmbiguityState());
     }
     if (new_state_type == IdType::cPose)
@@ -496,8 +538,9 @@ bool RtkImuCameraRrrEstimator::estimate()
     while (!visual_initialized_ && states_.size() > rrr_options_.max_gnss_window_length_minor)
     {
         states_.pop_front();
+        gnss_measurements_.pop_front();
+        ionosphere_states_.pop_front();
         ambiguity_states_.pop_front();
-        gnss_measurement_pairs_.pop_front();
     }
     // only keep frame measurement data for two epochs
     while (frame_bundles_.size() > 2)
@@ -507,7 +550,7 @@ bool RtkImuCameraRrrEstimator::estimate()
 }
 
 // Set initializatin result
-void RtkImuCameraRrrEstimator::setInitializationResult(const std::shared_ptr<MultisensorInitializerBase> &initializer)
+void PppImuCameraRrrEstimator::setInitializationResult(const std::shared_ptr<MultisensorInitializerBase> &initializer)
 {
     CHECK(initializer->finished());
 
@@ -531,13 +574,14 @@ void RtkImuCameraRrrEstimator::setInitializationResult(const std::shared_ptr<Mul
 
     // Shift memory for states and measurements
     states_.push_back(State());
-    gnss_measurement_pairs_.resize(states_.size());
+    gnss_measurements_.resize(states_.size());
+    ionosphere_states_.resize(states_.size());
     ambiguity_states_.resize(states_.size());
     frame_bundles_.push_back(nullptr);
 }
 
 // Marginalization
-bool RtkImuCameraRrrEstimator::marginalization(const IdType &type)
+bool PppImuCameraRrrEstimator::marginalization(const IdType &type)
 {
     if (type == IdType::cPose)
         return frameMarginalization();
@@ -548,7 +592,7 @@ bool RtkImuCameraRrrEstimator::marginalization(const IdType &type)
 }
 
 // Marginalization when the new state is a frame state
-bool RtkImuCameraRrrEstimator::frameMarginalization()
+bool PppImuCameraRrrEstimator::frameMarginalization()
 {
     // Check if we need marginalization
     if (isFirstEpoch())
@@ -601,10 +645,20 @@ bool RtkImuCameraRrrEstimator::frameMarginalization()
             // GNSS state that not yet been marginalized by GNSS steps.
             else
             {
+                auto it_gnss = gnssMeasurementAt(state.timestamp);
+                auto it_ionosphere = ionosphereStateAt(state.timestamp);
                 auto it_ambiguity = ambiguityStateAt(state.timestamp);
-                if (it_ambiguity != ambiguity_states_.end())
+                bool has_raw_gnss = it_gnss != gnss_measurements_.end() && !it_gnss->satellites.empty();
+                if (has_raw_gnss)
                 {
-                    addAmbiguityMarginBlocksWithResiduals(*it_ambiguity);
+                    if (it_ambiguity != ambiguity_states_.end())
+                        addAmbiguityMarginBlocksWithResiduals(*it_ambiguity);
+                    if (it_ionosphere != ionosphere_states_.end())
+                        addIonosphereMarginBlocksWithResiduals(*it_ionosphere);
+                    addTroposphereMarginBlockWithResiduals(state);
+                    addClockMarginBlocksWithResiduals(state);
+                    addFrequencyMarginBlocksWithResiduals(state);
+                    addGnssResidualMarginBlocks(state);
                 }
                 else
                 {
@@ -612,17 +666,19 @@ bool RtkImuCameraRrrEstimator::frameMarginalization()
                 }
                 addImuStateMarginBlock(state);
                 addImuResidualMarginBlocks(state);
-                addFrequencyMarginBlocksWithResiduals(state);
-                addGnssResidualMarginBlocks(state);
 
-                // erase ambiguity state and GNSS measurements
+                // erase PPP states and GNSS measurements
                 if (it_ambiguity != ambiguity_states_.end())
                 {
                     ambiguity_states_.erase(it_ambiguity);
                 }
-                if (gnssMeasurementPairAt(state.timestamp) != gnss_measurement_pairs_.end())
+                if (it_ionosphere != ionosphere_states_.end())
                 {
-                    gnss_measurement_pairs_.erase(gnssMeasurementPairAt(state.timestamp));
+                    ionosphere_states_.erase(it_ionosphere);
+                }
+                if (it_gnss != gnss_measurements_.end())
+                {
+                    gnss_measurements_.erase(it_gnss);
                 }
             }
 
@@ -649,7 +705,7 @@ bool RtkImuCameraRrrEstimator::frameMarginalization()
 }
 
 // Marginalization when the new state is a GNSS state
-bool RtkImuCameraRrrEstimator::gnssMarginalization()
+bool PppImuCameraRrrEstimator::gnssMarginalization()
 {
     // Check if we need marginalization
     if (isFirstEpoch())
@@ -671,6 +727,12 @@ bool RtkImuCameraRrrEstimator::gnssMarginalization()
         // Add marginalization items
         // IMU states and residuals
         addImuStateMarginBlockWithResiduals(oldestState());
+        // clock
+        addClockMarginBlocksWithResiduals(oldestState());
+        // troposphere
+        addTroposphereMarginBlockWithResiduals(oldestState());
+        // ionosphere
+        addIonosphereMarginBlocksWithResiduals(oldestIonosphereState());
         // ambiguity
         addAmbiguityMarginBlocksWithResiduals(oldestAmbiguityState());
         // frequency
@@ -697,17 +759,30 @@ bool RtkImuCameraRrrEstimator::gnssMarginalization()
                 break;
             // check if GNSS state
             if (state.id.type() != IdType::gPose)
+            {
+                it++;
                 continue;
+            }
 
             // Erase old marginalization item
             if (!eraseOldMarginalization())
                 return false;
 
             // margin
+            auto it_gnss = gnssMeasurementAt(state.timestamp);
+            auto it_ionosphere = ionosphereStateAt(state.timestamp);
             auto it_ambiguity = ambiguityStateAt(state.timestamp);
-            if (it_ambiguity != ambiguity_states_.end())
+            bool has_raw_gnss = it_gnss != gnss_measurements_.end() && !it_gnss->satellites.empty();
+            if (has_raw_gnss)
             {
-                addAmbiguityMarginBlocksWithResiduals(*it_ambiguity);
+                if (it_ambiguity != ambiguity_states_.end())
+                    addAmbiguityMarginBlocksWithResiduals(*it_ambiguity);
+                if (it_ionosphere != ionosphere_states_.end())
+                    addIonosphereMarginBlocksWithResiduals(*it_ionosphere);
+                addTroposphereMarginBlockWithResiduals(state);
+                addClockMarginBlocksWithResiduals(state);
+                addFrequencyMarginBlocksWithResiduals(state);
+                addGnssResidualMarginBlocks(state);
             }
             else
             {
@@ -715,17 +790,19 @@ bool RtkImuCameraRrrEstimator::gnssMarginalization()
             }
             addImuStateMarginBlock(state);
             addImuResidualMarginBlocks(state);
-            addFrequencyMarginBlocksWithResiduals(state);
-            addGnssResidualMarginBlocks(state);
 
-            // erase ambiguity state and GNSS measurements
+            // erase PPP states and GNSS measurements
             if (it_ambiguity != ambiguity_states_.end())
             {
                 ambiguity_states_.erase(it_ambiguity);
             }
-            if (gnssMeasurementPairAt(state.timestamp) != gnss_measurement_pairs_.end())
+            if (it_ionosphere != ionosphere_states_.end())
             {
-                gnss_measurement_pairs_.erase(gnssMeasurementPairAt(state.timestamp));
+                ionosphere_states_.erase(it_ionosphere);
+            }
+            if (it_gnss != gnss_measurements_.end())
+            {
+                gnss_measurements_.erase(it_gnss);
             }
 
             // Erase state
@@ -742,7 +819,7 @@ bool RtkImuCameraRrrEstimator::gnssMarginalization()
 }
 
 // Sparsify GNSS states to bound computational load
-void RtkImuCameraRrrEstimator::sparsifyGnssStates()
+void PppImuCameraRrrEstimator::sparsifyGnssStates()
 {
     // Check if we need to sparsify
     std::vector<BackendId> gnss_ids;
@@ -806,61 +883,43 @@ void RtkImuCameraRrrEstimator::sparsifyGnssStates()
         }
         State &state = states_[i];
 
+        auto it_gnss = gnssMeasurementAt(state.timestamp);
+        auto it_ionosphere = ionosphereStateAt(state.timestamp);
         auto it_ambiguity = ambiguityStateAt(state.timestamp);
+        bool has_raw_gnss = it_gnss != gnss_measurements_.end() && !it_gnss->satellites.empty();
+
         // the first one may be connected with margin error
-        if (it_ambiguity == ambiguity_states_.begin())
+        if ((it_ambiguity != ambiguity_states_.end() && it_ambiguity == ambiguity_states_.begin()) ||
+            (it_ionosphere != ionosphere_states_.end() && it_ionosphere == ionosphere_states_.begin()))
             continue;
 
         eraseGnssMeasurementResidualBlocks(state);
-        eraseFrequencyParameterBlocks(state);
-
-        // we may failed to find corresponding ambiguity state because the GNSS state can be
-        // loosely coupled state during initialization.
+        eraseClockParameterBlocks(state);
+        eraseTroposphereParameterBlock(state);
+        if (it_ionosphere != ionosphere_states_.end())
+        {
+            eraseIonosphereParameterBlocks(*it_ionosphere);
+            ionosphere_states_.erase(it_ionosphere);
+        }
         if (it_ambiguity != ambiguity_states_.end())
         {
             eraseAmbiguityParameterBlocks(*it_ambiguity);
             ambiguity_states_.erase(it_ambiguity);
         }
-        else
+        eraseFrequencyParameterBlocks(state);
+        if (!has_raw_gnss)
         {
             eraseGnssLooseResidualBlocks(state);
         }
-
         eraseImuState(state);
 
-        if (gnssMeasurementPairAt(state.timestamp) != gnss_measurement_pairs_.end())
+        if (it_gnss != gnss_measurements_.end())
         {
-            gnss_measurement_pairs_.erase(gnssMeasurementPairAt(state.timestamp));
+            gnss_measurements_.erase(it_gnss);
         }
 
         i--;
     }
-}
-
-// Compute ambiguity covariance at current epoch
-bool RtkImuCameraRrrEstimator::estimateAmbiguityCovariance(const State &state, Eigen::MatrixXd &covariance)
-{
-    // Computing the ambiguity covariance directly is very time-consuming, so we run a parallel
-    // optimizer and forcely set some empirical constraints to estimate a coarse covariance.
-    Transformation T_WS = getPoseEstimate(state);
-    Eigen::Vector3d t_SR_S = getGnssExtrinsicsEstimate();
-    Eigen::Vector3d t_WR_W = T_WS.getPosition() + T_WS.getRotationMatrix() * t_SR_S;
-    Eigen::Vector3d position = coordinate_->convert(t_WR_W, GeoType::ENU, GeoType::ECEF);
-    std::shared_ptr<Graph> sub_graph = ambiguity_covariance_estimator_->getGraph();
-    const State sub_state = ambiguity_covariance_estimator_->getState();
-
-    // Compute covariance
-    std::vector<uint64_t> parameter_block_ids;
-    // the ids in curAmbiguityState() are as the same as in ambiguity_covariance_estimator_
-    for (auto id : curAmbiguityState().ids)
-    {
-        if (!sub_graph->parameterBlockExists(id.asInteger()))
-            return false;
-        parameter_block_ids.push_back(id.asInteger());
-    }
-    sub_graph->computeCovariance(parameter_block_ids, covariance);
-
-    return true;
 }
 
 }; // namespace gici

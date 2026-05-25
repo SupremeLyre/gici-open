@@ -38,7 +38,7 @@ stream:
       tag: str_solution_file
       input_tags: [fmt_solution_file]
       type: file
-      path: /mnt/nvme1/datasets/gici_open_dataset/5.2/ppp_solution.txt
+      path: /mnt/nvme1/datasets/gici_open_dataset/5.2/ppp_tc_solution.txt
       enable_time_tag: false
 
   formators:
@@ -130,7 +130,8 @@ estimate:
     fmt_dcb_file_roles: [code_bias]
     fmt_imu_roles: [major]
     output_tags: [fmt_solution_file]
-    output_align_tag: fmt_gnss_rov
+    output_align_tag: fmt_imu
+    output_downsample_rate: 40
     compute_covariance: false
     ppp_imu_tc_options:
       max_window_length: 3

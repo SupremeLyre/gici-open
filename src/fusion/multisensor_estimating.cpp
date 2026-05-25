@@ -10,6 +10,7 @@
 
 #include "gici/fusion/gnss_imu_camera_srr_estimator.h"
 #include "gici/fusion/gnss_imu_lc_estimator.h"
+#include "gici/fusion/ppp_imu_camera_rrr_estimator.h"
 #include "gici/fusion/rtk_imu_camera_rrr_estimator.h"
 #include "gici/fusion/rtk_imu_tc_estimator.h"
 #include "gici/gnss/dgnss_estimator.h"
@@ -374,6 +375,53 @@ MultiSensorEstimating::MultiSensorEstimating(const NodeOptionHandlePtr &nodes, s
         CHECK_NOTNULL(visual_estimator);
         visual_estimator->setFeatureHandler(feature_handler_);
     }
+    // PPP/IMU/Camera tightly integration
+    else if (type_ == EstimatorType::PppImuCameraRrr)
+    {
+        YAML::Node ppp_imu_camera_rrr_node = node["ppp_imu_camera_rrr_options"];
+        if (ppp_imu_camera_rrr_node.IsDefined())
+        {
+            option_tools::loadOptions(ppp_imu_camera_rrr_node, ppp_imu_camera_rrr_options_);
+        }
+        YAML::Node ppp_node = node["ppp_options"];
+        if (ppp_node.IsDefined())
+        {
+            option_tools::loadOptions(ppp_node, ppp_options_);
+        }
+        YAML::Node gnss_imu_init_node = node["gnss_imu_initializer_options"];
+        if (gnss_imu_init_node.IsDefined())
+        {
+            option_tools::loadOptions(gnss_imu_init_node, gnss_imu_init_options_);
+        }
+        YAML::Node ambiguity_node = node["ambiguity_resolution_options"];
+        if (ambiguity_node.IsDefined())
+        {
+            option_tools::loadOptions(ambiguity_node, ambiguity_options_);
+        }
+
+        // rotate estrinsics
+        gnss_imu_init_options_.gnss_extrinsics =
+            ImuEstimatorBase::rotateImuToBody(gnss_imu_init_options_.gnss_extrinsics, imu_base_options_);
+        gnss_imu_init_options_.gnss_extrinsics_initial_std =
+            ImuEstimatorBase::rotateImuToBody(gnss_imu_init_options_.gnss_extrinsics_initial_std, imu_base_options_);
+        CameraBundlePtr camera_bundle = feature_handler_options_.cameras;
+        for (size_t i = 0; i < camera_bundle->numCameras(); i++)
+        {
+            camera_bundle->set_T_C_B(
+                i,
+                ImuEstimatorBase::rotateImuToBody(camera_bundle->get_T_C_B(i).inverse(), imu_base_options_).inverse());
+        }
+
+        feature_handler_.reset(new FeatureHandler(feature_handler_options_, imu_base_options_));
+        estimator_.reset(new PppImuCameraRrrEstimator(ppp_imu_camera_rrr_options_, gnss_imu_init_options_, ppp_options_,
+                                                      gnss_base_options_, gnss_loose_base_options_,
+                                                      visual_estimator_base_options_, imu_base_options_, base_options_,
+                                                      ambiguity_options_));
+        std::shared_ptr<VisualEstimatorBase> visual_estimator =
+            std::dynamic_pointer_cast<VisualEstimatorBase>(estimator_);
+        CHECK_NOTNULL(visual_estimator);
+        visual_estimator->setFeatureHandler(feature_handler_);
+    }
     else
     {
         LOG(ERROR) << "Invalid estimator type: " << static_cast<int>(type_);
@@ -496,6 +544,19 @@ void MultiSensorEstimating::resetProcessors()
     {
         feature_handler_.reset(new FeatureHandler(feature_handler_options_, imu_base_options_));
         estimator_.reset(new RtkImuCameraRrrEstimator(rtk_imu_camera_rrr_options_, gnss_imu_init_options_, rtk_options_,
+                                                      gnss_base_options_, gnss_loose_base_options_,
+                                                      visual_estimator_base_options_, imu_base_options_, base_options_,
+                                                      ambiguity_options_));
+        std::shared_ptr<VisualEstimatorBase> visual_estimator =
+            std::dynamic_pointer_cast<VisualEstimatorBase>(estimator_);
+        CHECK_NOTNULL(visual_estimator);
+        visual_estimator->setFeatureHandler(feature_handler_);
+    }
+    // PPP/IMU/Camera tightly integration
+    else if (type_ == EstimatorType::PppImuCameraRrr)
+    {
+        feature_handler_.reset(new FeatureHandler(feature_handler_options_, imu_base_options_));
+        estimator_.reset(new PppImuCameraRrrEstimator(ppp_imu_camera_rrr_options_, gnss_imu_init_options_, ppp_options_,
                                                       gnss_base_options_, gnss_loose_base_options_,
                                                       visual_estimator_base_options_, imu_base_options_, base_options_,
                                                       ambiguity_options_));
@@ -836,7 +897,8 @@ bool MultiSensorEstimating::processEstimator()
     mutex_input_.unlock();
 
     // Check pending
-    if (measurements_.size() > 5)
+    const int pending_warning_threshold = enable_backend_data_sparsify_ ? pending_num_threshold_ : 5;
+    if (measurements_.size() > pending_warning_threshold)
     {
         if (last_backend_pending_num_ != measurements_.size())
         {
@@ -910,10 +972,18 @@ bool MultiSensorEstimating::processEstimator()
         // check if estimator valid
         if (estimator_->getStatus() == EstimatorStatus::Diverged)
         {
-            // reset estimator
-            LOG(WARNING) << "Reset estimator because it is diverge!";
-            resetProcessors();
-            is_updated = false;
+            if (type_ == EstimatorType::PppImuCameraRrr)
+            {
+                LOG(WARNING) << "PPP/IMU/Camera RRR reported divergence. Keep the initialized estimator alive "
+                             << "and keep publishing propagated states.";
+            }
+            else
+            {
+                // reset estimator
+                LOG(WARNING) << "Reset estimator because it is diverge!";
+                resetProcessors();
+                is_updated = false;
+            }
         }
         // log intermediate data
         estimator_->logIntermediateData();
